@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Inter', sans-serif; /* Updated to Inter */
+}
+
+@layer base {
+  :root {
+    --background: 220 30% 96%; /* #F0F3F9 Very light cool off-white */
+    --foreground: 220 20% 30%; /* #3D455C Dark desaturated blue-gray */
+
+    --card: 220 30% 100%; /* #FFFFFF White */
+    --card-foreground: 220 20% 30%; /* #3D455C Dark desaturated blue-gray */
+
+    --popover: 220 30% 100%; /* White */
+    --popover-foreground: 220 20% 30%; /* Dark desaturated blue-gray */
+
+    --primary: 200 70% 60%; /* #66B3E0 Soft sky blue */
+    --primary-foreground: 200 50% 15%; /* #133C4D Dark cyan-blue */
+
+    --secondary: 210 30% 85%; /* #C4D1E0 Lighter muted blue */
+    --secondary-foreground: 210 25% 25%; /* #303A4C Darker blue for text on secondary */
+
+    --muted: 210 30% 90%; /* #D9E1EB Even lighter muted blue */
+    --muted-foreground: 210 20% 45%; /* #5B6A82 Slate gray for text on muted */
+
+    --accent: 160 50% 55%; /* #4AA688 Muted gentle teal */
+    --accent-foreground: 160 50% 98%; /* #F5FCFA Almost white for text on accent */
+
+    --destructive: 0 84.2% 60.2%; /* Keeping original destructive colors for now */
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 210 25% 80%; /* #B8C6D9 Light blue-gray border */
+    --input: 210 25% 80%; /* Light blue-gray input */
+    --ring: 200 70% 60%; /* Primary color for rings */
+
+    --chart-1: 200 70% 60%; /* Aligned with new primary */
+    --chart-2: 160 50% 55%; /* Aligned with new accent */
+    --chart-3: 210 40% 65%; /* Muted blue variant */
+    --chart-4: 180 40% 60%; /* Muted cyan variant */
+    --chart-5: 220 40% 70%; /* Lighter muted blue variant */
+    --radius: 0.5rem;
+
+    /* Sidebar specific colors aligned with the new theme */
+    --sidebar-background: 220 30% 98%; /* #F7F9FC Slightly lighter than main bg or same */
+    --sidebar-foreground: 220 20% 30%; /* #3D455C */
+    --sidebar-primary: 200 70% 60%; /* #66B3E0 */
+    --sidebar-primary-foreground: 200 50% 15%; /* #133C4D */
+    --sidebar-accent: 160 50% 55%; /* #4AA688 */
+    --sidebar-accent-foreground: 160 50% 98%; /* #F5FCFA */
+    --sidebar-border: 210 25% 88%; /* #D4DDEB */
+    --sidebar-ring: 200 70% 60%; /* #66B3E0 */
+  }
+
+  .dark {
+    --background: 220 20% 15%; /* #1E2433 Dark desaturated blue */
+    --foreground: 220 25% 85%; /* #C6D0E2 Light grayish blue */
+
+    --card: 220 20% 18%; /* #242B3A Slightly lighter than bg */
+    --card-foreground: 220 25% 85%; /* Light grayish blue */
+
+    --popover: 220 20% 18%; /* Dark popover */
+    --popover-foreground: 220 25% 85%; /* Light popover foreground */
+
+    --primary: 200 60% 50%; /* #4D99CC Slightly desaturated primary blue for dark mode */
+    --primary-foreground: 200 50% 95%; /* #E0F4FF Very light blue */
+
+    --secondary: 220 20% 25%; /* #333B4D Darker muted blue */
+    --secondary-foreground: 220 25% 80%; /* #BDC8DB Lighter blue for text */
+
+    --muted: 220 20% 22%; /* #2B3345 Even darker muted blue */
+    --muted-foreground: 220 20% 60%; /* #8392AD Medium gray-blue */
+
+    --accent: 160 40% 50%; /* #4DA67E Slightly desaturated accent teal for dark mode */
+    --accent-foreground: 160 50% 95%; /* #E0F8EF Very light green */
+
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 220 15% 30%; /* #404759 Dark blue-gray border */
+    --input: 220 15% 30%; /* Dark blue-gray input */
+    --ring: 200 60% 50%; /* Primary color for dark mode rings */
+    
+    --chart-1: 200 60% 50%;
+    --chart-2: 160 40% 50%;
+    --chart-3: 210 30% 50%;
+    --chart-4: 180 30% 45%;
+    --chart-5: 220 30% 55%;
+
+    --sidebar-background: 220 20% 16%; /* #202636 */
+    --sidebar-foreground: 220 25% 85%; /* #C6D0E2 */
+    --sidebar-primary: 200 60% 50%; /* #4D99CC */
+    --sidebar-primary-foreground: 200 50% 95%; /* #E0F4FF */
+    --sidebar-accent: 160 40% 50%; /* #4DA67E */
+    --sidebar-accent-foreground: 160 50% 95%; /* #E0F8EF */
+    --sidebar-border: 220 15% 28%; /* #3A4052 */
+    --sidebar-ring: 200 60% 50%; /* #4D99CC */
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
