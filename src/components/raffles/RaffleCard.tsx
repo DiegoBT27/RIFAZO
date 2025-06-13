@@ -30,10 +30,11 @@ const RaffleCard = React.memo(function RaffleCard({ raffle, currentUser, onDelet
   const soldCount = raffle.effectiveSoldNumbers ? raffle.effectiveSoldNumbers.length : (raffle.soldNumbers?.length || 0);
   const availableTickets = raffle.totalNumbers - soldCount;
 
-  const canDelete = currentUser &&
-                    raffle.creatorUsername === currentUser.username &&
-                    (currentUser.role === 'admin' || currentUser.role === 'founder') &&
-                    onDeleteRaffle;
+  const canDelete = currentUser && onDeleteRaffle &&
+                    (
+                      (currentUser.role === 'founder') || // Founder can delete any raffle
+                      (currentUser.role === 'admin' && raffle.creatorUsername === currentUser.username) // Admin can delete their own
+                    );
 
   const canViewProfile = creatorProfile && onViewProfile;
 

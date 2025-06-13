@@ -9,7 +9,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import Image from 'next/image';
 
-import { Button, buttonVariants } from '@/components/ui/button'; // Added buttonVariants
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -33,6 +33,13 @@ import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { addRaffle } from '@/lib/firebase/firestoreService';
 
+const todayAtMidnight = new Date();
+todayAtMidnight.setHours(0, 0, 0, 0);
+
+const tomorrowAtMidnight = new Date();
+tomorrowAtMidnight.setDate(tomorrowAtMidnight.getDate() + 1);
+tomorrowAtMidnight.setHours(0, 0, 0, 0);
+
 const raffleFormSchema = z.object({
   name: z.string().min(5, { message: "El nombre debe tener al menos 5 caracteres." }),
   description: z.string().min(10, { message: "La descripción debe tener al menos 10 caracteres." }),
@@ -40,7 +47,8 @@ const raffleFormSchema = z.object({
   prize: z.string().min(3, { message: "El premio debe tener al menos 3 caracteres." }),
   pricePerTicket: z.coerce.number().positive({ message: "El precio debe ser un número positivo." }),
   totalNumbers: z.coerce.number().int().min(10, { message: "Debe haber al menos 10 números." }).max(500, {message: "Máximo 500 números"}),
-  drawDate: z.date({ required_error: "La fecha del sorteo es obligatoria."}).min(new Date(new Date().setDate(new Date().getDate())), { message: "La fecha no puede ser anterior a hoy." }),
+  drawDate: z.date({ required_error: "La fecha del sorteo es obligatoria."})
+             .min(todayAtMidnight, { message: "La fecha del sorteo no puede ser en el pasado." }),
   lotteryName: z.string().optional(),
   drawTime: z.string().optional(),
   selectedPaymentMethodIds: z.array(z.string())
@@ -138,7 +146,7 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
       prize: '',
       pricePerTicket: 1,
       totalNumbers: 100,
-      drawDate: new Date(new Date().setDate(new Date().getDate() + 1)), 
+      drawDate: tomorrowAtMidnight,
       lotteryName: 'manual_entry',
       drawTime: 'unspecified_time',
       selectedPaymentMethodIds: [],
@@ -383,7 +391,7 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
                     onSelect={field.onChange}
                     initialFocus
                     locale={es}
-                    disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
+                    disabled={(date) => date < todayAtMidnight}
                   />
                 </PopoverContent>
               </Popover>

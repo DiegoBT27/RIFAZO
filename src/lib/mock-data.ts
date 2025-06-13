@@ -27,12 +27,4 @@ export const initialPlatformUsers: ManagedUser[] = [
     role: 'founder',
     ...fundadorProfileBase,
   },
-  {
-    id: 'firestore-user-id', // Placeholder ID
-    username: 'user',
-    password: 'user',
-    role: 'user',
-  },
 ];
-
-    
