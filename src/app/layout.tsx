@@ -8,7 +8,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import PageLoader from '@/components/layout/PageLoader'; // Import PageLoader
 
 export const metadata: Metadata = {
-  title: 'RIFAZO - Venezuelan Raffles',
+  title: 'RIFAZO-VE',
   description: 'Participate in exciting raffles and win amazing prizes on RIFAZO!',
 };
 

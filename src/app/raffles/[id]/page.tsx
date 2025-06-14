@@ -54,6 +54,7 @@ export default function RaffleDetailsPage() {
       setRaffle(foundRaffle);
 
       if (foundRaffle) {
+        // Fetch all participations to get accurate sold numbers for public view
         const participations = await getParticipationsByRaffleId(raffleId);
         const participationsForThisRaffle = participations
           .filter(p => p.paymentStatus !== 'rejected')
@@ -88,7 +89,7 @@ export default function RaffleDetailsPage() {
     if (raffleId) {
         fetchRaffleAndCreatorData();
     } else {
-        console.warn("[RaffleDetailsPage] raffleId is undefined. Params object for debugging:", params);
+        // console.warn("[RaffleDetailsPage] raffleId is undefined.");
         setPageIsLoading(false); 
     }
   }, [raffleId, fetchRaffleAndCreatorData]); 
@@ -133,7 +134,7 @@ export default function RaffleDetailsPage() {
         if (error.name === 'NotAllowedError') {
           toast({ title: "Error de Permiso", description: "No se pudo compartir. Revisa los permisos de tu navegador (HTTPS requerido).", variant: "destructive" });
         } else {
-          toast({ title: "Error al compartir", description: "No se pudo compartir la rifa usando la función nativa. Puedes copiar el enlace manually.", variant: "destructive" });
+          toast({ title: "Error al compartir", description: "No se pudo compartir la rifa usando la función nativa. Puedes copiar el enlace manualmente.", variant: "destructive" });
         }
       }
     } else {
@@ -143,6 +144,7 @@ export default function RaffleDetailsPage() {
     }
   };
 
+  // Show auth loading screen first
   if (authIsLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
@@ -152,6 +154,7 @@ export default function RaffleDetailsPage() {
     );
   }
 
+  // Then show page-specific loading screen (raffle data)
   if (pageIsLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
@@ -161,6 +164,7 @@ export default function RaffleDetailsPage() {
     );
   }
 
+  // If no raffle found after loading, show error
   if (!raffle) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)] text-center">
@@ -218,7 +222,7 @@ export default function RaffleDetailsPage() {
           <div className="grid grid-cols-2 gap-x-1.5 gap-y-1 text-[0.7rem] sm:text-xs">
             <div className="flex items-center">
               <DollarSign className="mr-1 h-3 w-3 sm:h-3.5 sm:w-3.5 text-accent" />
-              Precio: <strong className="ml-1">${raffle.pricePerTicket.toFixed(2)}</strong>
+              Precio: <strong className="ml-1">$\${raffle.pricePerTicket.toFixed(2)}</strong>
             </div>
             <div className="flex items-center">
               <CalendarDays className="mr-1 h-3 w-3 sm:h-3.5 sm:w-3.5 text-accent" />
@@ -269,41 +273,43 @@ export default function RaffleDetailsPage() {
           )}
           <Separator className="my-1 sm:my-1.5"/>
           
-          {availableTickets > 0 ? (
-            isLoggedIn ? (
-              <>
-                <NumberSelector
-                  totalNumbers={raffle.totalNumbers}
-                  soldNumbers={effectiveSoldNumbers}
-                  pricePerTicket={raffle.pricePerTicket}
-                  onSelectionChange={handleSelectionChange}
-                />
-                {selectedNumbers.length > 0 && raffle && raffle.id && raffle.name && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, ease: "easeOut" }}
-                    className="mt-3 sm:mt-4"
-                  >
-                    <PaymentUploadForm
-                       raffle={raffle}
-                       selectedNumbers={selectedNumbers}
-                       pricePerTicket={raffle.pricePerTicket}
-                       onPaymentSuccess={handlePaymentSuccess}
-                       creatorWhatsappNumber={creatorWhatsapp}
-                    />
-                  </motion.div>
-                )}
-              </>
-            ) : (
-              <Alert variant="default" className="mt-3 sm:mt-4 bg-primary/10 border-primary/30">
-                <LogIn className="h-4 w-4 text-primary" />
-                <AlertDescription className="text-primary text-xs sm:text-sm">
-                  Debes <Link href="/login" className="font-bold underline">iniciar sesión</Link> para seleccionar números y participar.
-                </AlertDescription>
-              </Alert>
+          {availableTickets > 0 ? ( 
+            !authIsLoading && ( 
+              isLoggedIn ? ( 
+                <>
+                  <NumberSelector
+                    totalNumbers={raffle.totalNumbers}
+                    soldNumbers={effectiveSoldNumbers}
+                    pricePerTicket={raffle.pricePerTicket}
+                    onSelectionChange={handleSelectionChange}
+                  />
+                  {selectedNumbers.length > 0 && raffle && raffle.id && raffle.name && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, ease: "easeOut" }}
+                      className="mt-3 sm:mt-4"
+                    >
+                      <PaymentUploadForm
+                         raffle={raffle}
+                         selectedNumbers={selectedNumbers}
+                         pricePerTicket={raffle.pricePerTicket}
+                         onPaymentSuccess={handlePaymentSuccess}
+                         creatorWhatsappNumber={creatorWhatsapp}
+                      />
+                    </motion.div>
+                  )}
+                </>
+              ) : ( 
+                <Alert variant="default" className="mt-3 sm:mt-4 bg-primary/10 border-primary/30">
+                  <LogIn className="h-4 w-4 text-primary" />
+                  <AlertDescription className="text-primary text-xs sm:text-sm">
+                    Debes <Link href="/login" className="font-bold underline">iniciar sesión</Link> o <Link href="/register" className="font-bold underline">registrarte</Link> para seleccionar números y participar.
+                  </AlertDescription>
+                </Alert>
+              )
             )
-          ) : (
+          ) : ( 
             <Alert variant="destructive" className="mt-3 sm:mt-4 text-center">
               <TicketIcon className="h-4 w-4" />
               <AlertDescription className="font-semibold text-sm sm:text-base">
@@ -316,4 +322,9 @@ export default function RaffleDetailsPage() {
     </div>
   );
 }
+    
+    
+
+    
+
     
