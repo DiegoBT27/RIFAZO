@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import React, { useState, useEffect, useCallback } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Ticket, Trophy, Sparkles, Menu as MenuIcon, LayoutDashboard, LogOut, ShieldCheck, MessageSquare, LogIn, UserCircle, Home, Info, MonitorSmartphone, PackageCheck as PackageCheckIcon, ShoppingCart, UserPlus } from 'lucide-react';
+import { Ticket, Trophy, Sparkles, Menu as MenuIcon, LayoutDashboard, LogOut, ShieldCheck, Headset, LogIn, UserCircle, Home, Info, MonitorSmartphone, PackageCheck as PackageCheckIcon, ShoppingCart, UserPlus, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -25,20 +25,17 @@ import {
 } from "@/components/ui/sheet";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/contexts/AuthContext';
-// Removed Notification related types and constants
+import { cn } from '@/lib/utils';
 
 const ADMIN_WHATSAPP_NUMBER = "584141135956";
 
 
 export default function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  // Removed notifications state and hasUnseenUrgentNotifications state
   const { user, isLoggedIn, logout, isLoading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
 
-  // Removed all useEffects related to notifications
-  // Removed handleDismissNotification and handleNotificationItemClick functions
 
   const baseNavItems = [];
   baseNavItems.push({ href: "/", label: "Rifas", icon: <Ticket /> });
@@ -61,9 +58,9 @@ export default function Header() {
 
 
   const supportButtonDesktop = (
-    <Button variant="outline" size="icon" asChild title="Soporte">
+    <Button variant="ghost" size="icon" asChild title="Soporte">
       <a href={`https://wa.me/${ADMIN_WHATSAPP_NUMBER}`} target="_blank" rel="noopener noreferrer">
-        <MessageSquare className="h-5 w-5" />
+        <Headset className="h-5 w-5" />
       </a>
     </Button>
   );
@@ -71,8 +68,8 @@ export default function Header() {
   const supportButtonMobile = (
      <SheetClose asChild>
       <a href={`https://wa.me/${ADMIN_WHATSAPP_NUMBER}`} target="_blank" rel="noopener noreferrer" onClick={() => setIsMobileMenuOpen(false)}>
-        <Button variant="outline" className="w-full justify-start text-sm py-2.5">
-          <MessageSquare className="mr-2 h-5 w-5" /> Soporte
+        <Button variant="ghost" className="w-full justify-start text-sm py-2.5">
+          <Headset className="mr-2 h-5 w-5" /> Soporte
         </Button>
       </a>
     </SheetClose>
@@ -91,13 +88,14 @@ export default function Header() {
           {finalNavItems.map(item => (
              <Button
               key={item.href}
-              variant={pathname === item.href ? "secondary" : "ghost"}
+              variant="ghost"
               size="icon"
               asChild
               title={item.label}
+              className={cn(pathname === item.href && "bg-accent text-accent-foreground hover:bg-accent/90")}
              >
               <Link href={item.href}>
-                {React.cloneElement(item.icon as React.ReactElement, { className: "h-5 w-5" })}
+                {item.icon}
               </Link>
             </Button>
           ))}
@@ -120,8 +118,6 @@ export default function Header() {
           )}
 
 
-          {/* Removed Bell icon DropdownMenu for notifications */}
-
           {isLoggedIn && user ? (
              <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -143,7 +139,6 @@ export default function Header() {
         )}
 
         <div className="md:hidden flex items-center">
-          {/* Removed mobile Bell icon SheetTrigger */}
           <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" className="relative">
@@ -169,8 +164,14 @@ export default function Header() {
                       {finalNavItems.map(item => (
                         <SheetClose key={item.label} asChild>
                           <Link href={item.href} onClick={() => setIsMobileMenuOpen(false)}>
-                            <Button variant={pathname === item.href ? "secondary" : "ghost"} className="w-full justify-start text-sm py-2.5">
-                              {React.cloneElement(item.icon as React.ReactElement, { className: "mr-2 h-5 w-5"})} {item.label}
+                            <Button 
+                              variant="ghost" 
+                              className={cn(
+                                "w-full justify-start text-sm py-2.5",
+                                pathname === item.href && "bg-accent text-accent-foreground hover:bg-accent/90"
+                              )}
+                            >
+                               {item.icon} {item.label}
                             </Button>
                           </Link>
                         </SheetClose>
@@ -189,8 +190,6 @@ export default function Header() {
                             </div>
                         </div>
                     </div>
-
-                    {/* Removed notification section from mobile menu */}
                      <DropdownMenuSeparator className="mx-4 bg-border"/>
                      <div className="p-4">
                         <SheetClose asChild>
@@ -231,3 +230,4 @@ export default function Header() {
     </header>
   );
 }
+

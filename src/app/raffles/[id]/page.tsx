@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react'; // Removed 'use'
+import { useState, useEffect, useCallback, use } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -12,12 +12,13 @@ import NumberSelector from '@/components/raffles/NumberSelector';
 import SectionTitle from '@/components/shared/SectionTitle';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CalendarDays, DollarSign, Gift, Ticket as TicketIcon, Info, Loader2, CreditCard, Smartphone, University, PackageCheck, Mail, UserCircle, AtSign, Phone, Building, Bitcoin, LogIn, Clock, ListChecks, AlertTriangle } from 'lucide-react';
+import { CalendarDays, DollarSign, Gift, Ticket as TicketIcon, Info, Loader2, CreditCard, Smartphone, University, PackageCheck, Mail, UserCircle, AtSign, Phone, Building, Bitcoin, LogIn, Clock, ListChecks, AlertTriangle, Share2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { motion } from 'framer-motion';
 import { getRaffleById, getParticipationsByRaffleId, getUserByUsername as getCreatorProfileByUsername } from '@/lib/firebase/firestoreService';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useToast } from '@/hooks/use-toast';
 
 const PaymentUploadForm = dynamic(() => import('@/components/raffles/PaymentUploadForm'), {
   loading: () => <div className="flex justify-center items-center h-40"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>,
@@ -28,10 +29,11 @@ const PaymentUploadForm = dynamic(() => import('@/components/raffles/PaymentUplo
 const FALLBACK_ADMIN_WHATSAPP_NUMBER = "584141135956";
 
 export default function RaffleDetailsPage() {
-  const { isLoggedIn, isLoading: authIsLoading } = useAuth();
+  const { isLoggedIn, isLoading: authIsLoading, user: currentUser } = useAuth();
   const router = useRouter();
+  const { toast } = useToast();
   
-  const params = useParams(); 
+  const params = useParams();
   const raffleId = params.id as string; 
 
   const [raffle, setRaffle] = useState<Raffle | null>(null);
@@ -107,6 +109,37 @@ export default function RaffleDetailsPage() {
     }
   };
 
+  const handleShare = async () => {
+    if (!raffle) return;
+
+    const raffleUrl = window.location.href;
+    const shareTitle = raffle.name;
+    const shareText = `¡Echa un vistazo a esta rifa: "${raffle.name}"! Premio: ${raffle.prize}. Participa aquí: ${raffleUrl}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: raffleUrl,
+        });
+        toast({ title: "Contenido compartido", description: "La rifa ha sido compartida con éxito." });
+      } catch (error: any) {
+        console.error("Error al compartir con Web Share API:", error);
+        if (error.name === 'NotAllowedError') {
+          toast({ title: "Error de Permiso", description: "No se pudo compartir. Revisa los permisos de tu navegador (HTTPS requerido).", variant: "destructive" });
+        } else {
+          toast({ title: "Error al compartir", description: "No se pudo compartir la rifa usando la función nativa. Puedes copiar el enlace manualmente.", variant: "destructive" });
+        }
+      }
+    } else {
+      // Fallback to WhatsApp
+      const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+      window.open(whatsappUrl, '_blank');
+      toast({ title: "Abriendo WhatsApp", description: "Prepara tu mensaje para compartir la rifa." });
+    }
+  };
+
   if (authIsLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
@@ -161,14 +194,13 @@ export default function RaffleDetailsPage() {
   
   const creatorWhatsapp = creatorProfile?.whatsappNumber || FALLBACK_ADMIN_WHATSAPP_NUMBER;
 
-
   return (
     <div className="space-y-3 sm:space-y-4">
       <SectionTitle className="text-lg sm:text-xl">{raffle.name}</SectionTitle>
       <Card className="overflow-hidden shadow-lg sm:shadow-xl">
         <CardHeader className="p-0 relative">
           <Image
-            src={raffle.image} alt={raffle.name} width={800} height={600}
+            src={raffle.image} alt={raffle.name} width={800} height={450}
             className="w-full h-48 sm:h-60 md:h-72 object-cover"
             data-ai-hint="raffle prize event" priority
           />
@@ -215,6 +247,12 @@ export default function RaffleDetailsPage() {
               )}
           </div>
           <Separator className="my-1 sm:my-1.5"/>
+          
+          <div className="py-2 flex justify-center">
+            <Button variant="outline" size="sm" onClick={handleShare} className="text-xs">
+              <Share2 className="mr-1.5 h-4 w-4" /> Compartir Rifa
+            </Button>
+          </div>
           
           {raffle.acceptedPaymentMethods && raffle.acceptedPaymentMethods.length > 0 && (
             <div className="w-full text-xs pt-1 pb-2">
@@ -315,6 +353,4 @@ export default function RaffleDetailsPage() {
     </div>
   );
 }
-
-
     
