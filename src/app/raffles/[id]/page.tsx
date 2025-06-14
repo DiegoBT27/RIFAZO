@@ -12,7 +12,7 @@ import NumberSelector from '@/components/raffles/NumberSelector';
 import SectionTitle from '@/components/shared/SectionTitle';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CalendarDays, DollarSign, Gift, Ticket as TicketIcon, Info, Loader2, CreditCard, Smartphone, University, PackageCheck, Mail, UserCircle, AtSign, Phone, Building, Bitcoin, LogIn, Clock, ListChecks, AlertTriangle, Share2 } from 'lucide-react';
+import { CalendarDays, DollarSign, Gift, Ticket as TicketIcon, Info, Loader2, CreditCard, Smartphone, PackageCheck, UserCircle, LogIn, Clock, ListChecks, AlertTriangle, Share2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { motion } from 'framer-motion';
@@ -174,19 +174,6 @@ export default function RaffleDetailsPage() {
   }
 
   const availableTickets = raffle.totalNumbers - effectiveSoldNumbers.length;
-  const pagoMovilMethod = raffle.acceptedPaymentMethods?.find(pm => pm.id === 'pagoMovil' && pm.adminPagoMovilDetails);
-  const payPalMethod = raffle.acceptedPaymentMethods?.find(pm => pm.id === 'paypal' && pm.adminPayPalDetails);
-  const zinliMethod = raffle.acceptedPaymentMethods?.find(pm => pm.id === 'zinli' && pm.adminZinliDetails);
-  const transferenciaBancariaMethod = raffle.acceptedPaymentMethods?.find(pm => pm.id === 'transferenciaBancaria' && pm.adminTransferenciaBancariaDetails);
-  const zelleMethod = raffle.acceptedPaymentMethods?.find(pm => pm.id === 'zelle' && pm.adminZelleDetails);
-  const depositoBancarioMethod = raffle.acceptedPaymentMethods?.find(pm => pm.id === 'depositoBancario' && pm.adminDepositoBancarioDetails);
-  const binancePayMethod = raffle.acceptedPaymentMethods?.find(pm => pm.id === 'binancePay' && pm.adminBinancePayDetails);
-  const airtmMethod = raffle.acceptedPaymentMethods?.find(pm => pm.id === 'airtm' && pm.adminAirtmDetails);
-
-  const otherPaymentMethods = raffle.acceptedPaymentMethods?.filter(pm =>
-      pm.id !== 'pagoMovil' && pm.id !== 'paypal' && pm.id !== 'zinli' && pm.id !== 'transferenciaBancaria' &&
-      pm.id !== 'zelle' && pm.id !== 'depositoBancario' && pm.id !== 'binancePay' && pm.id !== 'airtm'
-    ) || [];
 
   const drawDateObj = new Date(raffle.drawDate + 'T00:00:00-04:00');
   const formattedDrawDate = drawDateObj.toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -205,7 +192,18 @@ export default function RaffleDetailsPage() {
             data-ai-hint="raffle prize event" priority
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-3 sm:p-4 flex flex-col justify-end">
-            <CardTitle className="font-headline text-md sm:text-lg md:text-xl text-white line-clamp-2">{raffle.prize}</CardTitle>
+            <div className="flex justify-between items-center">
+              <CardTitle className="font-headline text-md sm:text-lg md:text-xl text-white line-clamp-2 flex-grow mr-2">{raffle.prize}</CardTitle>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleShare}
+                className="text-white hover:bg-white/20 flex-shrink-0"
+                title="Compartir Rifa"
+              >
+                <Share2 className="h-5 w-5" />
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-2 sm:p-2.5 space-y-1.5 sm:space-y-2">
@@ -248,60 +246,22 @@ export default function RaffleDetailsPage() {
           </div>
           <Separator className="my-1 sm:my-1.5"/>
           
-          <div className="py-2 flex justify-center">
-            <Button variant="outline" size="sm" onClick={handleShare} className="text-xs">
-              <Share2 className="mr-1.5 h-4 w-4" /> Compartir Rifa
-            </Button>
-          </div>
-          
           {raffle.acceptedPaymentMethods && raffle.acceptedPaymentMethods.length > 0 && (
             <div className="w-full text-xs pt-1 pb-2">
               <h4 className="text-xs sm:text-sm font-semibold mb-1.5 flex items-center text-foreground">
-                <PackageCheck className="mr-1.5 h-3.5 w-3.5 text-accent"/> Métodos de Pago Aceptados por el Organizador
+                <PackageCheck className="mr-1.5 h-3.5 w-3.5 text-accent"/> Métodos de Pago Aceptados
               </h4>
-              <ul className="space-y-2 list-inside list-disc marker:text-accent/70 pl-1 text-[0.7rem] sm:text-xs">
-                {pagoMovilMethod && (
-                  <li>
-                    <strong className="text-foreground">Pago Móvil:</strong>
-                    <div className="pl-3 text-muted-foreground space-y-0.5 mt-0.5">
-                      <p><Phone className="inline mr-1 h-3 w-3"/><strong>Teléfono:</strong> {pagoMovilMethod.adminPagoMovilDetails!.phone}</p>
-                      <p><UserCircle className="inline mr-1 h-3 w-3"/><strong>CI/RIF:</strong> {pagoMovilMethod.adminPagoMovilDetails!.ci}</p>
-                      <p><University className="inline mr-1 h-3 w-3"/><strong>Banco:</strong> {pagoMovilMethod.adminPagoMovilDetails!.bank}</p>
-                    </div>
+              <ul className="space-y-1 list-none pl-1 text-[0.7rem] sm:text-xs">
+                {raffle.acceptedPaymentMethods.map(pm => (
+                  <li key={pm.id} className="flex items-center text-muted-foreground">
+                    <CreditCard className="mr-2 h-3 w-3 sm:h-3.5 sm:w-3.5 text-accent/80" />
+                    {pm.name}
                   </li>
-                )}
-                {payPalMethod && <li><strong className="text-foreground">PayPal:</strong> <Mail className="inline mr-0.5 h-3 w-3"/>{payPalMethod.adminPayPalDetails!.email}</li>}
-                {zinliMethod && <li><strong className="text-foreground">Zinli:</strong> <UserCircle className="inline mr-0.5 h-3 w-3"/>{zinliMethod.adminZinliDetails!.accountIdentifier}</li>}
-                {transferenciaBancariaMethod && (
-                   <li>
-                    <strong className="text-foreground">Transferencia Bancaria:</strong>
-                    <div className="pl-3 text-muted-foreground space-y-0.5 mt-0.5">
-                      <p><University className="inline mr-1 h-3 w-3"/><strong>Banco:</strong> {transferenciaBancariaMethod.adminTransferenciaBancariaDetails!.bankName}</p>
-                      <p><UserCircle className="inline mr-1 h-3 w-3"/><strong>Titular:</strong> {transferenciaBancariaMethod.adminTransferenciaBancariaDetails!.accountHolderName}</p>
-                      <p><CreditCard className="inline mr-1 h-3 w-3"/><strong>Cuenta:</strong> {transferenciaBancariaMethod.adminTransferenciaBancariaDetails!.accountNumber} ({transferenciaBancariaMethod.adminTransferenciaBancariaDetails!.accountType})</p>
-                      <p><AtSign className="inline mr-1 h-3 w-3"/><strong>CI/RIF Titular:</strong> {transferenciaBancariaMethod.adminTransferenciaBancariaDetails!.holderId}</p>
-                    </div>
-                  </li>
-                )}
-                {zelleMethod && (
-                  <li>
-                    <strong className="text-foreground">Zelle:</strong>
-                    <div className="pl-3 text-muted-foreground space-y-0.5 mt-0.5">
-                      <p><UserCircle className="inline mr-1 h-3 w-3"/><strong>A nombre de:</strong> {zelleMethod.adminZelleDetails!.associatedName}</p>
-                      <p><Mail className="inline mr-1 h-3 w-3"/><strong>Correo/Teléfono:</strong> {zelleMethod.adminZelleDetails!.emailOrPhone}</p>
-                    </div>
-                  </li>
-                )}
-                 {depositoBancarioMethod && (
-                  <li>
-                    <strong className="text-foreground">Depósito Bancario (Taquilla/Online):</strong>
-                    <p className="pl-3 text-muted-foreground whitespace-pre-wrap mt-0.5">{depositoBancarioMethod.adminDepositoBancarioDetails!.instructions}</p>
-                  </li>
-                )}
-                {binancePayMethod && <li><strong className="text-foreground">Binance Pay:</strong> <Bitcoin className="inline mr-0.5 h-3 w-3"/>ID/Email/Tel: {binancePayMethod.adminBinancePayDetails!.identifier}</li>}
-                {airtmMethod && <li><strong className="text-foreground">Airtm:</strong> <Mail className="inline mr-0.5 h-3 w-3"/>{airtmMethod.adminAirtmDetails!.email}</li>}
-                {otherPaymentMethods.map(pm => <li key={pm.id}><strong className="text-foreground">{pm.name}</strong></li>)}
+                ))}
               </ul>
+               <p className="mt-1.5 text-[0.65rem] sm:text-xs italic text-primary/90">
+                Nota: Al participar, se te redirigirá a WhatsApp para coordinar el pago directamente con el organizador.
+              </p>
             </div>
           )}
           <Separator className="my-1 sm:my-1.5"/>
@@ -354,3 +314,4 @@ export default function RaffleDetailsPage() {
   );
 }
     
+

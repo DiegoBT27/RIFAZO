@@ -1,55 +1,9 @@
 
-export interface AdminPagoMovilDetails {
-  phone: string;
-  ci: string;
-  bank: string;
-}
-
-export interface AdminPayPalDetails {
-  email: string;
-}
-
-export interface AdminZinliDetails {
-  accountIdentifier: string; // Can be email or username
-}
-
-export interface AdminTransferenciaBancariaDetails {
-  bankName: string;
-  accountHolderName: string;
-  accountNumber: string;
-  accountType: 'Ahorro' | 'Corriente' | string; // Allow string for other types if needed
-  holderId: string; // CI/RIF
-}
-
-export interface AdminZelleDetails {
-  associatedName: string;
-  emailOrPhone: string;
-}
-
-export interface AdminDepositoBancarioDetails {
-  instructions: string; // Could include bank, account number, holder, etc.
-}
-
-export interface AdminBinancePayDetails {
-  identifier: string; // E.g., Pay ID, email, or phone
-}
-
-export interface AdminAirtmDetails {
-  email: string;
-}
-
 export interface AcceptedPaymentMethod {
   id: string;
   name: string;
   category: string;
-  adminPagoMovilDetails?: AdminPagoMovilDetails;
-  adminPayPalDetails?: AdminPayPalDetails;
-  adminZinliDetails?: AdminZinliDetails;
-  adminTransferenciaBancariaDetails?: AdminTransferenciaBancariaDetails;
-  adminZelleDetails?: AdminZelleDetails;
-  adminDepositoBancarioDetails?: AdminDepositoBancarioDetails;
-  adminBinancePayDetails?: AdminBinancePayDetails;
-  adminAirtmDetails?: AdminAirtmDetails;
+  // Ya no se guardarán los detalles específicos del admin en el objeto Raffle
 }
 
 export interface Raffle {

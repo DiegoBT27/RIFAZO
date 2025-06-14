@@ -81,21 +81,6 @@ export default function UserProfileDialog({ userProfile, isOpen, onOpenChange }:
                     <p className="text-muted-foreground whitespace-pre-wrap">{userProfile.bio}</p>
                 </div>
             )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                {userProfile.email && (
-                <div className="p-2.5 bg-secondary/30 rounded-md">
-                    <h4 className="font-semibold text-sm text-foreground mb-0.5 flex items-center"><AtSign className="h-4 w-4 mr-1.5 text-accent" /> Correo</h4>
-                    <p className="text-muted-foreground">{userProfile.email}</p>
-                </div>
-                )}
-                {userProfile.whatsappNumber && (
-                <div className="p-2.5 bg-secondary/30 rounded-md">
-                    <h4 className="font-semibold text-sm text-foreground mb-0.5 flex items-center"><Phone className="h-4 w-4 mr-1.5 text-accent" /> WhatsApp</h4>
-                    <p className="text-muted-foreground">{userProfile.whatsappNumber}</p>
-                </div>
-                )}
-            </div>
             
             {(userProfile.locationState || userProfile.locationCity) && (
                 <div className="p-2.5 bg-secondary/30 rounded-md">

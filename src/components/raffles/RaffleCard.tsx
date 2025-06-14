@@ -152,7 +152,7 @@ const RaffleCard = React.memo(function RaffleCard({ raffle, currentUser, onDelet
         {canDelete && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="icon" onClick={(e) => {e.stopPropagation(); e.preventDefault();}} className="flex-shrink-0" title="Eliminar Rifa">
+              <Button variant="destructive" size="icon" className="flex-shrink-0" title="Eliminar Rifa">
                 <Trash2 />
               </Button>
             </AlertDialogTrigger>
@@ -166,7 +166,7 @@ const RaffleCard = React.memo(function RaffleCard({ raffle, currentUser, onDelet
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel className="text-xs h-8 px-3">Cancelar</AlertDialogCancel>
-                <AlertDialogAction onClick={(e) => {e.stopPropagation(); e.preventDefault(); if(onDeleteRaffle) onDeleteRaffle(raffle.id);}} className="bg-destructive hover:bg-destructive/90 text-xs h-8 px-3">
+                <AlertDialogAction onClick={() => { if(onDeleteRaffle) onDeleteRaffle(raffle.id);}} className="bg-destructive hover:bg-destructive/90 text-xs h-8 px-3">
                   Sí, Eliminar
                 </AlertDialogAction>
               </AlertDialogFooter>

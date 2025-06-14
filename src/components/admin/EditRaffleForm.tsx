@@ -1,11 +1,11 @@
 
 'use client';
 
-import { useState, type ChangeEvent } from 'react';
+import { useState, type ChangeEvent, useEffect } from 'react';
 import { useForm, type SubmitHandler, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { format } from 'date-fns';
+import { format, parse } from 'date-fns';
 import { es } from 'date-fns/locale';
 import Image from 'next/image';
 
@@ -24,26 +24,25 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/contexts/AuthContext';
 import type { Raffle, AcceptedPaymentMethod } from '@/types';
 import { AVAILABLE_PAYMENT_METHODS, getPaymentMethodsByCategory } from '@/lib/payment-methods';
 import { LOTTERY_NAMES, DRAW_TIMES } from '@/lib/lottery-data';
-import { CalendarIcon, Loader2, UploadCloud, Image as ImageIcon } from 'lucide-react';
+import { CalendarIcon, Loader2, UploadCloud, Image as ImageIcon, Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
-import { addRaffle } from '@/lib/firebase/firestoreService';
+import { updateRaffle } from '@/lib/firebase/firestoreService';
+import { AlertTriangle } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+
 
 const todayAtMidnight = new Date();
 todayAtMidnight.setHours(0, 0, 0, 0);
 
-const tomorrowAtMidnight = new Date();
-tomorrowAtMidnight.setDate(tomorrowAtMidnight.getDate() + 1);
-tomorrowAtMidnight.setHours(0, 0, 0, 0);
-
-const raffleFormSchema = z.object({
+const editRaffleFormSchema = z.object({
+  id: z.string(), 
   name: z.string().min(5, { message: "El nombre debe tener al menos 5 caracteres." }),
   description: z.string().min(10, { message: "La descripción debe tener al menos 10 caracteres." }),
-  image: z.string().min(1, { message: "Por favor, sube una imagen para la rifa." }), // Data URI
+  image: z.string().min(1, { message: "Se requiere una imagen para la rifa." }),
   prize: z.string().min(3, { message: "El premio debe tener al menos 3 caracteres." }),
   pricePerTicket: z.coerce.number().positive({ message: "El precio debe ser un número positivo." }),
   totalNumbers: z.coerce.number().int().min(10, { message: "Debe haber al menos 10 números." }).max(500, {message: "Máximo 500 números"}),
@@ -59,36 +58,57 @@ const raffleFormSchema = z.object({
     path: ["selectedPaymentMethodIds"],
 });
 
-type RaffleFormValues = z.infer<typeof raffleFormSchema>;
+
+type EditRaffleFormValues = z.infer<typeof editRaffleFormSchema>;
 
 const paymentMethodsByCat = getPaymentMethodsByCategory();
 
-interface CreateRaffleFormProps {
-  onSuccess?: (newRaffle: Raffle) => void;
+interface EditRaffleFormProps {
+  raffle: Raffle;
+  onSuccess: (updatedRaffle: Raffle) => void;
 }
 
-export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
+export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProps) {
   const { toast } = useToast();
-  const { user: currentUser } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(raffle?.image || null);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
-  const { register, handleSubmit, control, reset, setValue, watch, formState: { errors } } = useForm<RaffleFormValues>({
-    resolver: zodResolver(raffleFormSchema),
+  const { register, handleSubmit, control, reset, setValue, watch, formState: { errors } } = useForm<EditRaffleFormValues>({
+    resolver: zodResolver(editRaffleFormSchema),
     defaultValues: {
-      name: '',
-      description: '',
-      image: '',
-      prize: '',
-      pricePerTicket: 1,
-      totalNumbers: 100,
-      drawDate: tomorrowAtMidnight,
-      lotteryName: 'manual_entry',
-      drawTime: 'unspecified_time',
-      selectedPaymentMethodIds: [],
+      id: raffle?.id || '',
+      name: raffle?.name || '',
+      description: raffle?.description || '',
+      image: raffle?.image || '',
+      prize: raffle?.prize || '',
+      pricePerTicket: raffle?.pricePerTicket || 1,
+      totalNumbers: raffle?.totalNumbers || 100,
+      drawDate: raffle?.drawDate ? parse(raffle.drawDate, 'yyyy-MM-dd', new Date()) : todayAtMidnight,
+      lotteryName: raffle?.lotteryName || 'manual_entry',
+      drawTime: raffle?.drawTime || 'unspecified_time',
+      selectedPaymentMethodIds: raffle?.acceptedPaymentMethods?.map(pm => pm.id) || [],
     }
   });
+  
+  useEffect(() => {
+    if (raffle) {
+      reset({
+        id: raffle.id,
+        name: raffle.name,
+        description: raffle.description,
+        image: raffle.image,
+        prize: raffle.prize,
+        pricePerTicket: raffle.pricePerTicket,
+        totalNumbers: raffle.totalNumbers,
+        drawDate: parse(raffle.drawDate, 'yyyy-MM-dd', new Date()),
+        lotteryName: raffle.lotteryName || 'manual_entry',
+        drawTime: raffle.drawTime || 'unspecified_time',
+        selectedPaymentMethodIds: raffle.acceptedPaymentMethods?.map(pm => pm.id) || [],
+      });
+      setImagePreview(raffle.image);
+    }
+  }, [raffle, reset]);
 
   const handleImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -109,28 +129,13 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
         setValue('image', dataUri, { shouldValidate: true });
       };
       reader.readAsDataURL(file);
-    } else {
-      setImagePreview(null);
-      setValue('image', '', { shouldValidate: true });
     }
   };
 
-  const onSubmit: SubmitHandler<RaffleFormValues> = async (data) => {
+  const onSubmit: SubmitHandler<EditRaffleFormValues> = async (data) => {
     setIsLoading(true);
 
-    if (!currentUser?.username) {
-      toast({ title: "Error de Autenticación", description: "No se pudo identificar al creador de la rifa.", variant: "destructive" });
-      setIsLoading(false);
-      return;
-    }
-
-    if (!data.image) {
-      toast({ title: "Error de Formulario", description: "Por favor, sube una imagen para la rifa.", variant: "destructive" });
-      setIsLoading(false);
-      return;
-    }
-
-    if (!data.selectedPaymentMethodIds || data.selectedPaymentMethodIds.length === 0) {
+     if (!data.selectedPaymentMethodIds || data.selectedPaymentMethodIds.length === 0) {
         toast({ title: "Error de Formulario", description: "Debes seleccionar al menos un método de pago.", variant: "destructive" });
         setIsLoading(false);
         return;
@@ -148,11 +153,10 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
       })
       .filter(Boolean) as AcceptedPaymentMethod[];
 
-
-    const raffleDataForDb: Omit<Raffle, 'id' | 'soldNumbers' | 'effectiveSoldNumbers'> = {
+    const raffleDataForDb: Partial<Raffle> = { 
       name: data.name,
       description: data.description,
-      image: data.image, 
+      image: data.image,
       prize: data.prize,
       pricePerTicket: data.pricePerTicket,
       totalNumbers: data.totalNumbers,
@@ -160,70 +164,88 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
       lotteryName: data.lotteryName === 'manual_entry' ? undefined : data.lotteryName,
       drawTime: data.drawTime === 'unspecified_time' ? undefined : data.drawTime,
       acceptedPaymentMethods: acceptedPaymentMethods,
-      creatorUsername: currentUser.username,
     };
 
     try {
-      const newRaffle = await addRaffle(raffleDataForDb);
+      await updateRaffle(data.id, raffleDataForDb);
 
       toast({
-        title: "Rifa Creada Exitosamente",
-        description: `La rifa "${newRaffle.name}" ha sido guardada en Firestore.`,
+        title: "Rifa Actualizada",
+        description: `La rifa "${data.name}" ha sido guardada exitosamente.`,
       });
-      reset();
-      setImagePreview(null);
-      setValue('selectedPaymentMethodIds', []); 
-      if (onSuccess) onSuccess(newRaffle);
+      
+      const updatedRaffleData: Raffle = {
+        ...raffle, 
+        ...raffleDataForDb, 
+        id: data.id, 
+      };
+
+      if (onSuccess) onSuccess(updatedRaffleData);
+
     } catch (error) {
-      console.error("Error saving raffle to Firestore:", error);
-      toast({ title: "Error de Guardado", description: "No se pudo guardar la rifa en Firestore.", variant: "destructive" });
+      console.error("Error updating raffle in Firestore:", error);
+      toast({ title: "Error de Guardado", description: "No se pudo actualizar la rifa en Firestore.", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
   };
+  
+  if (!raffle) {
+    return (
+        <Card className="mt-6">
+            <CardHeader>
+                <CardTitle className="text-destructive flex items-center">
+                    <AlertTriangle className="mr-2 h-5 w-5" /> Error
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <p>No se ha proporcionado información de la rifa para editar o la rifa no existe.</p>
+            </CardContent>
+        </Card>
+    );
+  }
 
   return (
     <div className="px-1 pt-2 pb-4">
-      <h3 className="font-headline text-lg sm:text-xl mb-1">Detalles de la Nueva Rifa</h3>
-      <p className="text-xs text-muted-foreground mb-3 sm:mb-4">Completa la información para crear una nueva rifa.</p>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-3 sm:space-y-4">
+        <Input type="hidden" {...register("id")} />
         <div>
-          <Label htmlFor="create-raffle-name" className="text-xs sm:text-sm">Nombre de la Rifa</Label>
-          <Input id="create-raffle-name" {...register("name")} placeholder="Ej: Gran Rifa de Verano" className="h-9 text-xs sm:text-sm"/>
+          <Label htmlFor="edit-raffle-name" className="text-xs sm:text-sm">Nombre de la Rifa</Label>
+          <Input id="edit-raffle-name" {...register("name")} placeholder="Ej: Gran Rifa de Verano" className="h-9 text-xs sm:text-sm"/>
           {errors.name && <p className="text-xs text-destructive mt-1">{errors.name.message}</p>}
         </div>
 
         <div>
-          <Label htmlFor="description" className="text-xs sm:text-sm">Descripción Detallada</Label>
-          <Textarea id="description" {...register("description")} placeholder="Describe el premio, las reglas, etc." className="text-xs sm:text-sm" rows={3}/>
+          <Label htmlFor="edit-description" className="text-xs sm:text-sm">Descripción Detallada</Label>
+          <Textarea id="edit-description" {...register("description")} placeholder="Describe el premio, las reglas, etc." className="text-xs sm:text-sm" rows={3}/>
           {errors.description && <p className="text-xs text-destructive mt-1">{errors.description.message}</p>}
         </div>
 
         <div className="space-y-1">
-          <Label htmlFor="image-upload-input" className="text-xs sm:text-sm">Imagen de la Rifa (Máx 700KB)</Label>
-          <p className="text-[0.65rem] sm:text-xs text-muted-foreground -mt-0.5 mb-1">Recomendación: Imagen apaisada (ej: 800x600px) con contenido principal centrado.</p>
+          <Label htmlFor="edit-image-upload-input" className="text-xs sm:text-sm">Imagen de la Rifa (Máx 700KB)</Label>
+          <p className="text-[0.65rem] sm:text-xs text-muted-foreground -mt-0.5 mb-1">Recomendación: Imagen apaisada (ej: 800x600px) con contenido principal centrado. Sube una nueva para cambiarla.</p>
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="w-20 h-20 sm:w-24 sm:h-24 border border-dashed rounded-md flex items-center justify-center bg-muted/50 overflow-hidden">
               {imagePreview ? (
-                <Image src={imagePreview} alt="Vista previa" width={96} height={96} className="object-contain" />
+                <Image src={imagePreview} alt="Vista previa de la rifa" width={96} height={96} className="object-contain" />
               ) : (
                 <ImageIcon className="h-8 w-8 sm:h-10 sm:w-10 text-muted-foreground" />
               )}
             </div>
             <div className="flex-grow">
               <Label
-                htmlFor="image-upload-input"
+                htmlFor="edit-image-upload-input"
                 className={cn(
                   buttonVariants({ variant: "outline", size: "icon" }),
                   "cursor-pointer"
                 )}
-                title="Subir Imagen"
+                title="Cambiar Imagen"
               >
                 <UploadCloud className="h-5 w-5" />
-                <span className="sr-only">Subir Imagen</span>
+                <span className="sr-only">Cambiar Imagen</span>
               </Label>
               <input
-                id="image-upload-input"
+                id="edit-image-upload-input"
                 type="file"
                 accept="image/png, image/jpeg, image/webp"
                 onChange={handleImageUpload}
@@ -235,32 +257,32 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
         </div>
 
         <div>
-          <Label htmlFor="prize" className="text-xs sm:text-sm">Premio Principal</Label>
-          <Input id="prize" {...register("prize")} placeholder="Ej: Un iPhone 15 Pro Max" className="h-9 text-xs sm:text-sm"/>
+          <Label htmlFor="edit-prize" className="text-xs sm:text-sm">Premio Principal</Label>
+          <Input id="edit-prize" {...register("prize")} placeholder="Ej: Un iPhone 15 Pro Max" className="h-9 text-xs sm:text-sm"/>
           {errors.prize && <p className="text-xs text-destructive mt-1">{errors.prize.message}</p>}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <div>
-            <Label htmlFor="pricePerTicket" className="text-xs sm:text-sm">Precio por Boleto (USD)</Label>
-            <Input id="pricePerTicket" type="number" step="0.01" {...register("pricePerTicket")} placeholder="Ej: 5.00" className="h-9 text-xs sm:text-sm"/>
+            <Label htmlFor="edit-pricePerTicket" className="text-xs sm:text-sm">Precio por Boleto (USD)</Label>
+            <Input id="edit-pricePerTicket" type="number" step="0.01" {...register("pricePerTicket")} placeholder="Ej: 5.00" className="h-9 text-xs sm:text-sm"/>
             {errors.pricePerTicket && <p className="text-xs text-destructive mt-1">{errors.pricePerTicket.message}</p>}
           </div>
           <div>
-            <Label htmlFor="totalNumbers" className="text-xs sm:text-sm">Cantidad Total de Números</Label>
-            <Input id="totalNumbers" type="number" {...register("totalNumbers")} placeholder="Ej: 100" className="h-9 text-xs sm:text-sm"/>
+            <Label htmlFor="edit-totalNumbers" className="text-xs sm:text-sm">Cantidad Total de Números</Label>
+            <Input id="edit-totalNumbers" type="number" {...register("totalNumbers")} placeholder="Ej: 100" className="h-9 text-xs sm:text-sm"/>
             {errors.totalNumbers && <p className="text-xs text-destructive mt-1">{errors.totalNumbers.message}</p>}
           </div>
         </div>
 
         <div>
-          <Label htmlFor="drawDate-trigger" className="text-xs sm:text-sm">Fecha del Sorteo</Label>
+          <Label htmlFor="edit-drawDate-trigger" className="text-xs sm:text-sm">Fecha del Sorteo</Label>
           <Controller
             name="drawDate"
             control={control}
             render={({ field }) => (
               <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
-                <PopoverTrigger asChild id="drawDate-trigger">
+                <PopoverTrigger asChild id="edit-drawDate-trigger">
                   <Button
                     variant={"outline"}
                     onClick={() => setIsCalendarOpen(true)}
@@ -291,13 +313,13 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <div>
-            <Label htmlFor="lotteryName-select" className="text-xs sm:text-sm">Lotería de Referencia (Opcional)</Label>
+            <Label htmlFor="edit-lotteryName-select" className="text-xs sm:text-sm">Lotería de Referencia (Opcional)</Label>
             <Controller
               name="lotteryName"
               control={control}
               render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value || undefined} >
-                  <SelectTrigger id="lotteryName-select" className="h-9 text-xs sm:text-sm">
+                <Select onValueChange={field.onChange} value={field.value || 'manual_entry'} >
+                  <SelectTrigger id="edit-lotteryName-select" className="h-9 text-xs sm:text-sm">
                     <SelectValue placeholder="Selecciona una lotería o Manual" />
                   </SelectTrigger>
                   <SelectContent>
@@ -310,13 +332,13 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
             {errors.lotteryName && <p className="text-xs text-destructive mt-1">{errors.lotteryName.message}</p>}
           </div>
           <div>
-            <Label htmlFor="drawTime-select" className="text-xs sm:text-sm">Hora del Sorteo (Opcional)</Label>
+            <Label htmlFor="edit-drawTime-select" className="text-xs sm:text-sm">Hora del Sorteo (Opcional)</Label>
             <Controller
               name="drawTime"
               control={control}
               render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value || undefined}>
-                  <SelectTrigger id="drawTime-select" className="h-9 text-xs sm:text-sm">
+                <Select onValueChange={field.onChange} value={field.value || 'unspecified_time'}>
+                  <SelectTrigger id="edit-drawTime-select" className="h-9 text-xs sm:text-sm">
                     <SelectValue placeholder="Selecciona una hora o No Especificada" />
                   </SelectTrigger>
                   <SelectContent>
@@ -333,7 +355,7 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
         <Separator className="my-3 sm:my-4" />
         <h4 className="font-headline text-base sm:text-lg mb-1.5 sm:mb-2">Métodos de Pago Aceptados</h4>
         <p className="text-xs text-muted-foreground mb-2 sm:mb-3">
-          Selecciona los métodos de pago que aceptarás. Los detalles específicos se coordinarán por WhatsApp.
+          Modifica los métodos de pago que aceptarás. Los detalles se coordinarán vía WhatsApp.
         </p>
         <Controller
           name="selectedPaymentMethodIds"
@@ -346,7 +368,7 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
                   {methods.map((method) => (
                     <div key={method.id} className="flex items-center space-x-2 py-1">
                       <Checkbox
-                        id={`payment-${method.id}`}
+                        id={`edit-payment-${method.id}`}
                         checked={field.value?.includes(method.id)}
                         onCheckedChange={(checked) => {
                           return checked
@@ -354,7 +376,7 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
                             : field.onChange(field.value?.filter((id) => id !== method.id));
                         }}
                       />
-                      <Label htmlFor={`payment-${method.id}`} className="text-xs sm:text-sm font-normal cursor-pointer">{method.name}</Label>
+                      <Label htmlFor={`edit-payment-${method.id}`} className="text-xs sm:text-sm font-normal cursor-pointer">{method.name}</Label>
                     </div>
                   ))}
                 </div>
@@ -365,8 +387,8 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
         {errors.selectedPaymentMethodIds && <p className="text-xs text-destructive mt-1">{errors.selectedPaymentMethodIds.message}</p>}
 
         <Button type="submit" size="default" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground mt-4 sm:mt-6 text-sm h-9 sm:h-10" disabled={isLoading}>
-          {isLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <UploadCloud className="mr-1.5 h-4 w-4" />}
-          {isLoading ? 'Creando Rifa...' : 'Crear y Guardar Rifa'}
+          {isLoading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
+          {isLoading ? 'Guardando...' : 'Guardar Cambios'}
         </Button>
       </form>
     </div>

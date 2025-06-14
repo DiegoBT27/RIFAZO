@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import React, { useState, useEffect, useCallback } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Ticket, Trophy, Sparkles, Menu as MenuIcon, LayoutDashboard, LogOut, ShieldCheck, Headset, LogIn, UserCircle, Home, Info, MonitorSmartphone, PackageCheck as PackageCheckIcon, ShoppingCart, UserPlus, Share2 } from 'lucide-react';
+import { Ticket, Trophy, Sparkles, Menu as MenuIcon, LayoutDashboard, LogOut, ShieldCheck, Headset, LogIn, UserCircle, Home, Info, MonitorSmartphone, PackageCheck as PackageCheckIcon, ListChecks, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -46,6 +46,7 @@ export default function Header() {
     if (user.role === 'user') {
       userSpecificNavItems.push({ href: "/my-participations", label: "Mis Boletos", icon: <MonitorSmartphone /> });
     } else if (user.role === 'admin' || user.role === 'founder') {
+      userSpecificNavItems.push({ href: "/admin/my-raffles", label: "Mis Rifas", icon: <ListChecks /> });
       userSpecificNavItems.push({ href: "/admin/payment-confirmation", label: "Confirmar Pagos", icon: <PackageCheckIcon /> });
       userSpecificNavItems.push({ href: "/admin", label: user.role === 'admin' ? "Panel Admin" : "Panel Fundador", icon: user.role === 'admin' ? <LayoutDashboard /> : <ShieldCheck /> });
     }
@@ -171,7 +172,7 @@ export default function Header() {
                                 pathname === item.href && "bg-accent text-accent-foreground hover:bg-accent/90"
                               )}
                             >
-                               {item.icon} {item.label}
+                               {React.cloneElement(item.icon, { className: "mr-2 h-5 w-5"})} {item.label}
                             </Button>
                           </Link>
                         </SheetClose>
@@ -230,4 +231,3 @@ export default function Header() {
     </header>
   );
 }
-
