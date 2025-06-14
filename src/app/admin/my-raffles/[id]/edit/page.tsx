@@ -9,13 +9,13 @@ import { Loader2, AlertCircle, Edit3 } from 'lucide-react';
 import type { Raffle } from '@/types';
 import { getRaffleById } from '@/lib/firebase/firestoreService';
 import { useToast } from '@/hooks/use-toast';
-import EditRaffleForm from '@/components/admin/EditRaffleForm'; // Placeholder for now
+import EditRaffleForm from '@/components/admin/EditRaffleForm'; 
 
 export default function EditRafflePage() {
   const { user, isLoggedIn, isLoading: authIsLoading } = useAuth();
   const router = useRouter();
   const params = useParams();
-  const raffleId = params.id as string;
+  const raffleId = params?.id as string | undefined;
   const { toast } = useToast();
 
   const [raffle, setRaffle] = useState<Raffle | null>(null);
@@ -24,7 +24,11 @@ export default function EditRafflePage() {
 
   const fetchRaffleDetails = useCallback(async () => {
     if (!isLoggedIn || !user || !raffleId) {
-      setPageIsLoading(false);
+      setPageIsLoading(false); 
+      if (!raffleId && user && isLoggedIn) { 
+          toast({ title: "Error", description: "ID de rifa no válido.", variant: "destructive" });
+          router.replace('/admin/my-raffles');
+      }
       return;
     }
 
@@ -57,11 +61,16 @@ export default function EditRafflePage() {
         router.replace('/login');
       } else if (user?.role !== 'admin' && user?.role !== 'founder') {
         router.replace('/');
-      } else {
+      } else if (raffleId) { 
         fetchRaffleDetails();
+      } else {
+        console.warn("[EditRafflePage] raffleId is undefined. Params object for debugging:", params);
+        setPageIsLoading(false);
+        toast({ title: "Error de Carga", description: "No se pudo obtener el ID de la rifa para editar.", variant: "destructive" });
+        router.replace('/admin/my-raffles');
       }
     }
-  }, [authIsLoading, isLoggedIn, user, router, fetchRaffleDetails]);
+  }, [authIsLoading, isLoggedIn, user, router, fetchRaffleDetails, raffleId, toast]); 
   
   const handleFormSuccess = (updatedRaffle: Raffle) => {
     toast({

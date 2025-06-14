@@ -145,19 +145,17 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
         duration: 8000,
       });
 
-      const whatsappMessage = `¡Hola! Acabo de registrar mi participación para la rifa:
-*Rifa:* ${raffle.name}
-*Organizador:* ${raffle.creatorUsername || 'RIFAZO General'}
-*Mi Usuario:* ${currentUser.username}
-*A nombre de:* ${participantName} ${participantLastName}
-*Cédula:* ${participantIdCard}
-*Teléfono:* ${participantPhone}
-*Números Seleccionados:* ${selectedNumbers.join(', ')}
-*Total a Pagar:* $${totalAmount.toFixed(2)}
-*ID de Participación (Referencia):* ${savedParticipation.id}
-*Notas Adicionales:* ${notes || 'Ninguna'}
+      const whatsappMessage = `🎉 ¡Tu participación ha sido registrada con éxito!
 
-Voy a proceder a coordinar el pago y enviarte el comprobante por aquí.
+📌 Rifa: ${raffle.name}
+🏷️ A nombre de: ${participantName} ${participantLastName}
+🆔 Cédula: ${participantIdCard}
+📞 Teléfono: ${participantPhone}
+🎟️ Número(s) seleccionado(s): ${selectedNumbers.join(', ')}
+💰 Total a pagar: $${totalAmount.toFixed(2)}
+📝 Notas adicionales: ${notes || 'Ninguna'}
+
+💬 Quedo atento(a) a los datos de los métodos de pago seleccionados para completar mi participación.
 `;
       const whatsappUrl = `https://wa.me/${finalWhatsappNumber}?text=${encodeURIComponent(whatsappMessage)}`;
       
@@ -246,4 +244,3 @@ Voy a proceder a coordinar el pago y enviarte el comprobante por aquí.
     </form>
   );
 }
-

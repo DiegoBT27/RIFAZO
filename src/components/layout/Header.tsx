@@ -43,9 +43,11 @@ export default function Header() {
 
   const userSpecificNavItems = [];
   if (isLoggedIn && user) {
-    if (user.role === 'user') {
-      userSpecificNavItems.push({ href: "/my-participations", label: "Mis Boletos", icon: <MonitorSmartphone /> });
-    } else if (user.role === 'admin' || user.role === 'founder') {
+    // "Mis Boletos" is visible for all logged-in users
+    userSpecificNavItems.push({ href: "/my-participations", label: "Mis Boletos", icon: <MonitorSmartphone /> });
+
+    // Admin/Founder specific items
+    if (user.role === 'admin' || user.role === 'founder') {
       userSpecificNavItems.push({ href: "/admin/my-raffles", label: "Mis Rifas", icon: <ListChecks /> });
       userSpecificNavItems.push({ href: "/admin/payment-confirmation", label: "Confirmar Pagos", icon: <PackageCheckIcon /> });
       userSpecificNavItems.push({ href: "/admin", label: user.role === 'admin' ? "Panel Admin" : "Panel Fundador", icon: user.role === 'admin' ? <LayoutDashboard /> : <ShieldCheck /> });

@@ -152,17 +152,17 @@ export default function AdminPaymentManager() {
           {/* Comprobante de pago eliminado de esta vista por ahora */}
         </div>
         {showActions && (
-        <div className="mt-3 md:mt-0 md:ml-4 flex flex-col sm:flex-row sm:items-start gap-2 flex-shrink-0">
-          <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white text-xs h-8" onClick={() => updateParticipationStatusInDB(p, 'confirmed')}>
-            <CheckCircle className="mr-1.5 h-4 w-4"/>Confirmar
+        <div className="mt-3 md:mt-0 md:ml-4 flex items-center sm:items-start gap-2 flex-shrink-0">
+          <Button size="icon" className="bg-green-600 hover:bg-green-700 text-white h-8 w-8" onClick={() => updateParticipationStatusInDB(p, 'confirmed')} title="Confirmar Pago">
+            <CheckCircle className="h-4 w-4"/>
           </Button>
-          <Button size="sm" variant="destructive" className="text-xs h-8" onClick={() => updateParticipationStatusInDB(p, 'rejected')}>
-            <XCircle className="mr-1.5 h-4 w-4"/>Rechazar
+          <Button size="icon" variant="destructive" className="h-8 w-8" onClick={() => updateParticipationStatusInDB(p, 'rejected')} title="Rechazar Pago">
+            <XCircle className="h-4 w-4"/>
           </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="outline" size="sm" className="text-xs h-8">
-                <Trash2 className="mr-1.5 h-4 w-4"/>Elim. Reg.
+              <Button variant="outline" size="icon" className="h-8 w-8" title="Eliminar Registro">
+                <Trash2 className="h-4 w-4"/>
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
@@ -231,14 +231,16 @@ export default function AdminPaymentManager() {
                <Card key={p.id} className={`p-3 sm:p-4 border-l-4 ${p.paymentStatus === 'confirmed' ? 'border-green-500 bg-green-500/5' : 'border-red-500 bg-red-500/5'}`}>
                 <div className="flex flex-col md:flex-row justify-between md:items-start">
                   {renderParticipationDetails(p, false)} {/* No actions for processed */}
-                  <div className="mt-3 md:mt-0 md:ml-4 flex items-start gap-2 flex-shrink-0">
-                    <Badge variant={p.paymentStatus === 'confirmed' ? 'default' : 'destructive'} className={p.paymentStatus === 'confirmed' ? 'bg-green-600' : ''}>
-                      {p.paymentStatus === 'confirmed' ? 'Confirmado' : 'Rechazado'}
-                    </Badge>
+                  <div className="mt-3 md:mt-0 md:ml-4 flex items-center gap-2 flex-shrink-0">
+                    {p.paymentStatus === 'confirmed' ? (
+                      <CheckCircle className="h-5 w-5 text-green-600" title="Confirmado" />
+                    ) : (
+                      <XCircle className="h-5 w-5 text-red-600" title="Rechazado" />
+                    )}
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="outline" size="sm" className="text-xs h-7 px-2 py-1">
-                          <Trash2 className="mr-1 h-3.5 w-3.5"/>Elim.
+                        <Button variant="outline" size="icon" className="h-7 w-7" title="Eliminar Registro">
+                          <Trash2 className="h-3.5 w-3.5"/>
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
@@ -272,3 +274,4 @@ export default function AdminPaymentManager() {
     </div>
   );
 }
+

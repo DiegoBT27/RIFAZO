@@ -1,6 +1,7 @@
 
 'use client';
 
+import React from 'react'; 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -8,44 +9,49 @@ import dynamic from 'next/dynamic';
 import { useAuth } from '@/contexts/AuthContext';
 import SectionTitle from '@/components/shared/SectionTitle';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
   DialogFooter, DialogTrigger, DialogClose,
 } from '@/components/ui/dialog';
 import type { Participation, ManagedUser } from '@/types';
-import { Ticket, CalendarDays, AlertCircle, CheckCircle, Clock, ShoppingBag, Eye, Info, Loader2, UserCircle as UserCircleIcon } from 'lucide-react';
+import { Ticket, CalendarDays, AlertCircle, CheckCircle, Clock, ShoppingBag, Eye, Info, Loader2, UserCircle as UserCircleIcon, MessageSquare } from 'lucide-react';
 import { getParticipationsByUsername, getUserByUsername as getCreatorProfileByUsername } from '@/lib/firebase/firestoreService';
+import { Badge } from '@/components/ui/badge'; 
+import { useToast } from '@/hooks/use-toast';
 
 const UserProfileDialog = dynamic(() => import('@/components/shared/UserProfileDialog'), {
   loading: () => <div className="p-4 text-center">Cargando perfil...</div>,
   ssr: false
 });
 
-const statusIcons: Record<string, JSX.Element | null> = {
-  pending: <Clock className="h-3.5 w-3.5 text-yellow-500" />,
-  confirmed: <CheckCircle className="h-3.5 w-3.5 text-green-500" />,
-  rejected: <AlertCircle className="h-3.5 w-3.5 text-red-500" />,
-  unknown: <Info className="h-3.5 w-3.5 text-gray-500" />, // Fallback icon
+const FALLBACK_ADMIN_WHATSAPP_NUMBER = "584141135956";
+
+const statusIcons: Record<string, { icon: JSX.Element; color: string; title: string }> = {
+  pending: { icon: <Clock className="h-4 w-4" />, color: 'text-yellow-500', title: 'Pendiente' },
+  confirmed: { icon: <CheckCircle className="h-4 w-4" />, color: 'text-green-500', title: 'Confirmado' },
+  rejected: { icon: <AlertCircle className="h-4 w-4" />, color: 'text-red-500', title: 'Rechazado' },
+  unknown: { icon: <Info className="h-4 w-4" />, color: 'text-gray-500', title: 'Desconocido' },
 };
-const statusText: Record<string, string> = {
+
+const statusTextForDialog: Record<string, string> = {
   pending: 'Pendiente',
   confirmed: 'Confirmado',
   rejected: 'Rechazado',
-  unknown: 'Desconocido', // Fallback text
+  unknown: 'Desconocido',
 };
-const statusVariant: Record<string, "secondary" | "default" | "destructive" | "outline"> = {
+const statusVariantForDialog: Record<string, "secondary" | "default" | "destructive" | "outline"> = {
   pending: 'secondary',
   confirmed: 'default',
   rejected: 'destructive',
-  unknown: 'outline', // Fallback variant
+  unknown: 'outline',
 };
 
 
 export default function MyParticipationsPage() {
   const { isLoggedIn, isLoading: authIsLoading, user } = useAuth();
   const router = useRouter();
+  const { toast } = useToast();
   const [participations, setParticipations] = useState<Participation[]>([]);
   const [creatorProfilesMap, setCreatorProfilesMap] = useState<Record<string, ManagedUser>>({});
   const [pageIsLoading, setPageIsLoading] = useState(true);
@@ -94,6 +100,30 @@ export default function MyParticipationsPage() {
     setIsProfileDialogOpen(true);
   }, []);
 
+  const handleResendWhatsappMessage = (participation: Participation) => {
+    const creatorProfile = participation.creatorUsername ? creatorProfilesMap[participation.creatorUsername] : undefined;
+    const organizerWhatsapp = creatorProfile?.whatsappNumber || FALLBACK_ADMIN_WHATSAPP_NUMBER;
+    const organizerName = creatorProfile?.publicAlias || participation.creatorUsername || 'Organizador';
+
+    const message = `¡Hola ${organizerName}! Estoy contactándote sobre mi participación registrada:
+
+Rifa: ${participation.raffleName}
+A nombre de: ${participation.participantName} ${participation.participantLastName}
+Números: ${participation.numbers.join(', ')}
+Registrado el: ${new Date(participation.purchaseDate).toLocaleDateString('es-VE')}
+
+Me gustaría coordinar/confirmar el pago. ¡Gracias!
+ID de Participación: ${participation.id}`;
+
+    const whatsappUrl = `https://wa.me/${organizerWhatsapp}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+    toast({
+      title: "Abriendo WhatsApp",
+      description: `Se preparó un mensaje para ${organizerName}.`,
+    });
+  };
+
+
   if (authIsLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
@@ -129,19 +159,21 @@ export default function MyParticipationsPage() {
           {participations.map((participation) => {
             const creatorProfile = participation.creatorUsername ? creatorProfilesMap[participation.creatorUsername] : undefined;
             const paymentStatusKey = participation.paymentStatus as keyof typeof statusIcons;
-            const currentStatusIcon = statusIcons[paymentStatusKey] || statusIcons.unknown;
-            const currentStatusText = statusText[paymentStatusKey] || statusText.unknown;
-            const currentStatusVariant = statusVariant[paymentStatusKey] || statusVariant.unknown;
+            const statusDisplay = statusIcons[paymentStatusKey] || statusIcons.unknown;
+            
+            const currentStatusTextForDialog = statusTextForDialog[paymentStatusKey] || statusTextForDialog.unknown;
+            const currentStatusVariantForDialog = statusVariantForDialog[paymentStatusKey] || statusVariantForDialog.unknown;
 
             return (
             <Dialog key={participation.id}>
               <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col justify-between">
                 <CardHeader className="pb-2 sm:pb-3 pt-3 sm:pt-4 px-3 sm:px-4">
-                  <CardTitle className="font-headline text-base sm:text-lg text-foreground line-clamp-2">{participation.raffleName}</CardTitle>
-                   <Badge variant={currentStatusVariant} className="mt-1 w-fit text-xs py-1">
-                    {currentStatusIcon}
-                    <span className="ml-1.5">{currentStatusText}</span>
-                  </Badge>
+                  <div className="flex justify-between items-start">
+                    <CardTitle className="font-headline text-base sm:text-lg text-foreground line-clamp-2 flex-grow pr-2">{participation.raffleName}</CardTitle>
+                    <span title={statusDisplay.title} className={`flex-shrink-0 ${statusDisplay.color}`}>
+                      {React.cloneElement(statusDisplay.icon, { className: "h-5 w-5"})}
+                    </span>
+                  </div>
                 </CardHeader>
                 <CardContent className="p-3 sm:p-4 pt-1.5 sm:pt-2 space-y-1 text-xs">
                   <p className="flex items-center"><Ticket className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> Números: <span className="font-semibold ml-1">{participation.numbers.join(', ')}</span></p>
@@ -155,18 +187,28 @@ export default function MyParticipationsPage() {
                 </CardContent>
                 <CardFooter className="p-3 sm:p-4 flex gap-2">
                   <DialogTrigger asChild>
-                    <Button variant="outline" size="sm" className="flex-grow text-xs h-8"><Eye className="mr-1.5 h-3.5 w-3.5"/> Detalles</Button>
+                    <Button variant="outline" size="sm" className="flex-1 text-xs h-8"><Eye className="mr-1.5 h-3.5 w-3.5"/> Detalles</Button>
                   </DialogTrigger>
                   {creatorProfile && (
                     <Button
                       variant="secondary"
-                      size="sm"
+                      size="icon"
                       onClick={() => handleViewProfile(creatorProfile)}
-                      className="flex-grow text-xs h-8"
+                      className="h-8 w-8"
+                      title="Ver Perfil del Organizador"
                     >
-                      <Info className="mr-1.5 h-3.5 w-3.5"/> Ver Organizador
+                      <Info className="h-4 w-4"/>
                     </Button>
                   )}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handleResendWhatsappMessage(participation)}
+                    className="h-8 w-8"
+                    title="Contactar Organizador por WhatsApp"
+                  >
+                    <MessageSquare className="h-4 w-4"/>
+                  </Button>
                 </CardFooter>
               </Card>
               <DialogContent className="sm:max-w-md">
@@ -180,10 +222,7 @@ export default function MyParticipationsPage() {
                     <p><strong>Rifa:</strong> {participation.raffleName}</p>
                     <p><strong>Números:</strong> {participation.numbers.join(', ')}</p>
                     <p><strong>Fecha de Compra:</strong> {new Date(participation.purchaseDate).toLocaleString('es-VE')}</p>
-                    <p><strong>Estado del Pago:</strong> <Badge variant={currentStatusVariant} className="py-1">{currentStatusIcon} <span className="ml-1">{currentStatusText}</span></Badge></p>
-                    {participation.participantName && <p><strong>Nombre:</strong> {participation.participantName} {participation.participantLastName}</p>}
-                    {participation.participantIdCard && <p><strong>Cédula/ID:</strong> {participation.participantIdCard}</p>}
-                    {participation.participantPhone && <p><strong>Teléfono:</strong> {participation.participantPhone}</p>}
+                    <p><strong>Estado del Pago:</strong> <Badge variant={currentStatusVariantForDialog} className="py-1"> {React.cloneElement(statusIcons[paymentStatusKey]?.icon || statusIcons.unknown.icon, {className:"h-3.5 w-3.5"})} <span className="ml-1">{currentStatusTextForDialog}</span></Badge></p>
                     {creatorProfile && <p><strong>Organizador:</strong> {creatorProfile.publicAlias || creatorProfile.username}</p>}
                   </div>
                   <DialogFooter>
@@ -215,3 +254,4 @@ export default function MyParticipationsPage() {
     </div>
   );
 }
+

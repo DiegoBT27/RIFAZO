@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback, use } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -25,7 +25,6 @@ const PaymentUploadForm = dynamic(() => import('@/components/raffles/PaymentUplo
   ssr: false
 });
 
-// Define a fallback WhatsApp number, can be the general admin number
 const FALLBACK_ADMIN_WHATSAPP_NUMBER = "584141135956";
 
 export default function RaffleDetailsPage() {
@@ -34,7 +33,7 @@ export default function RaffleDetailsPage() {
   const { toast } = useToast();
   
   const params = useParams();
-  const raffleId = params.id as string; 
+  const raffleId = params?.id as string | undefined; 
 
   const [raffle, setRaffle] = useState<Raffle | null>(null);
   const [creatorProfile, setCreatorProfile] = useState<ManagedUser | null>(null);
@@ -86,8 +85,13 @@ export default function RaffleDetailsPage() {
 
 
   useEffect(() => {
-    fetchRaffleAndCreatorData();
-  }, [fetchRaffleAndCreatorData]);
+    if (raffleId) {
+        fetchRaffleAndCreatorData();
+    } else {
+        console.warn("[RaffleDetailsPage] raffleId is undefined. Params object for debugging:", params);
+        setPageIsLoading(false); 
+    }
+  }, [raffleId, fetchRaffleAndCreatorData]); 
 
   const handleSelectionChange = (numbers: number[]) => {
     setSelectedNumbers(numbers);
@@ -129,11 +133,10 @@ export default function RaffleDetailsPage() {
         if (error.name === 'NotAllowedError') {
           toast({ title: "Error de Permiso", description: "No se pudo compartir. Revisa los permisos de tu navegador (HTTPS requerido).", variant: "destructive" });
         } else {
-          toast({ title: "Error al compartir", description: "No se pudo compartir la rifa usando la función nativa. Puedes copiar el enlace manualmente.", variant: "destructive" });
+          toast({ title: "Error al compartir", description: "No se pudo compartir la rifa usando la función nativa. Puedes copiar el enlace manually.", variant: "destructive" });
         }
       }
     } else {
-      // Fallback to WhatsApp
       const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
       window.open(whatsappUrl, '_blank');
       toast({ title: "Abriendo WhatsApp", description: "Prepara tu mensaje para compartir la rifa." });
@@ -314,4 +317,3 @@ export default function RaffleDetailsPage() {
   );
 }
     
-
