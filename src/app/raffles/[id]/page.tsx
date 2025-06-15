@@ -54,7 +54,6 @@ export default function RaffleDetailsPage() {
       setRaffle(foundRaffle);
 
       if (foundRaffle) {
-        // Fetch all participations to get accurate sold numbers for public view
         const participations = await getParticipationsByRaffleId(raffleId);
         const participationsForThisRaffle = participations
           .filter(p => p.paymentStatus !== 'rejected')
@@ -89,7 +88,6 @@ export default function RaffleDetailsPage() {
     if (raffleId) {
         fetchRaffleAndCreatorData();
     } else {
-        // console.warn("[RaffleDetailsPage] raffleId is undefined.");
         setPageIsLoading(false); 
     }
   }, [raffleId, fetchRaffleAndCreatorData]); 
@@ -101,13 +99,14 @@ export default function RaffleDetailsPage() {
   const handlePaymentSuccess = async () => {
     if (raffle && raffle.id) {
       try {
+        // Re-fetch participations for this raffle to update sold numbers
         const participations = await getParticipationsByRaffleId(raffle.id);
         const participationsForThisRaffle = participations
             .filter(p => p.paymentStatus !== 'rejected')
             .flatMap(p => p.numbers);
         const combinedSoldNumbers = Array.from(new Set([...(raffle.soldNumbers || []), ...participationsForThisRaffle]));
         setEffectiveSoldNumbers(combinedSoldNumbers);
-        setSelectedNumbers([]);
+        setSelectedNumbers([]); // Clear selection after successful payment registration
       } catch (error) {
         console.error("[RaffleDetailsPage] Error refreshing participations after payment:", error);
       }
@@ -144,7 +143,6 @@ export default function RaffleDetailsPage() {
     }
   };
 
-  // Show auth loading screen first
   if (authIsLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
@@ -154,7 +152,6 @@ export default function RaffleDetailsPage() {
     );
   }
 
-  // Then show page-specific loading screen (raffle data)
   if (pageIsLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
@@ -164,7 +161,6 @@ export default function RaffleDetailsPage() {
     );
   }
 
-  // If no raffle found after loading, show error
   if (!raffle) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)] text-center">
@@ -182,9 +178,17 @@ export default function RaffleDetailsPage() {
 
   const availableTickets = raffle.totalNumbers - effectiveSoldNumbers.length;
 
-  const drawDateObj = new Date(raffle.drawDate + 'T00:00:00-04:00');
+  const drawDateObj = new Date(raffle.drawDate + 'T00:00:00-04:00'); // Assuming Venezuela timezone (GMT-4)
   const formattedDrawDate = drawDateObj.toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  let lotteryDisclaimer = raffle.lotteryName && raffle.drawTime ? `El número ganador corresponderá al primer premio del sorteo de ${raffle.lotteryName} del ${formattedDrawDate} a la(s) ${raffle.drawTime}.` : "";
+  let lotteryDisclaimer = "";
+  if (raffle.lotteryName) {
+    lotteryDisclaimer = `El número ganador se determinará según ${raffle.lotteryName}`;
+    if (raffle.drawTime) {
+        lotteryDisclaimer += ` del ${formattedDrawDate} a la(s) ${raffle.drawTime}.`;
+    } else {
+        lotteryDisclaimer += ` del ${formattedDrawDate}.`;
+    }
+  }
   
   const creatorWhatsapp = creatorProfile?.whatsappNumber || FALLBACK_ADMIN_WHATSAPP_NUMBER;
 
@@ -195,7 +199,7 @@ export default function RaffleDetailsPage() {
         <CardHeader className="p-0 relative">
           <Image
             src={raffle.image} alt={raffle.name} width={800} height={450}
-            className="w-full h-48 sm:h-60 md:h-72 object-cover"
+            className="w-full h-40 sm:h-48 md:h-[250px] object-cover"
             data-ai-hint="raffle prize event" priority
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-3 sm:p-4 flex flex-col justify-end">
@@ -235,10 +239,10 @@ export default function RaffleDetailsPage() {
              {raffle.lotteryName && (
               <div className="flex items-center">
                 <ListChecks className="mr-1 h-3 w-3 sm:h-3.5 sm:w-3.5 text-accent" />
-                Lotería: {raffle.lotteryName}
+                Método: {raffle.lotteryName}
               </div>
             )}
-            {raffle.drawTime && (
+            {raffle.drawTime && raffle.lotteryName && ( // Only show time if method is also specified
               <div className="flex items-center col-span-2 sm:col-span-1">
                 <Clock className="mr-1 h-3 w-3 sm:h-3.5 sm:w-3.5 text-accent" />
                 Hora Sorteo: {raffle.drawTime}
@@ -267,7 +271,7 @@ export default function RaffleDetailsPage() {
                 ))}
               </ul>
                <p className="mt-1.5 text-[0.65rem] sm:text-xs italic text-primary/90">
-                Nota: Al participar, se te redirigirá a WhatsApp para coordinar el pago directamente con el organizador.
+                Nota: Al participar, se te redirigirá a WhatsApp para coordinar el pago directamente con el organizador. Los detalles específicos del organizador para cada método se mostrarán en tu boleto comprado si el organizador los ha proporcionado en su perfil.
               </p>
             </div>
           )}
@@ -328,3 +332,9 @@ export default function RaffleDetailsPage() {
     
 
     
+
+    
+
+    
+
+

@@ -80,9 +80,9 @@ const RaffleCard = React.memo(function RaffleCard({ raffle, currentUser, onDelet
         <Image
           src={raffle.image}
           alt={raffle.name}
-          width={600}
-          height={400}
-          className="rounded-t-lg object-cover w-full h-40 sm:h-48"
+          width={640}
+          height={500}
+          className="rounded-t-lg object-cover w-full h-[300px] md:h-[250px]"
           data-ai-hint="raffle prize product"
         />
       </CardHeader>
@@ -179,3 +179,4 @@ const RaffleCard = React.memo(function RaffleCard({ raffle, currentUser, onDelet
 });
 
 export default RaffleCard;
+

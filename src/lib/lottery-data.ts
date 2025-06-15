@@ -1,22 +1,22 @@
 
-export const LOTTERY_NAMES: string[] = [
-  "La Granjita",
-  "Lotto Activo",
-  "Lotto Rey",
-  "Chance Animalitos",
-  "Guacharo Activo",
-  "Selva Plus",
-  "Triple Gana",
-  "Triple Zulia",
-  "Triple Táchira",
-  "Triple Caracas",
-  "Chance A",
-  "Chance B",
-  "Chance C",
-  "Multi Triple",
-  "Datos Activos",
-  // Añade más nombres de loterías según sea necesario
-];
+// LOTTERY_NAMES is removed as it's no longer used for a Select input.
+// export const LOTTERY_NAMES: string[] = [
+//   "La Granjita",
+//   "Lotto Activo",
+//   "Lotto Rey",
+//   "Chance Animalitos",
+//   "Guacharo Activo",
+//   "Selva Plus",
+//   "Triple Gana",
+//   "Triple Zulia",
+//   "Triple Táchira",
+//   "Triple Caracas",
+//   "Chance A",
+//   "Chance B",
+//   "Chance C",
+//   "Multi Triple",
+//   "Datos Activos",
+// ];
 
 export const DRAW_TIMES: string[] = [
   "08:00 AM",

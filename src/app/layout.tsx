@@ -9,7 +9,7 @@ import PageLoader from '@/components/layout/PageLoader'; // Import PageLoader
 
 export const metadata: Metadata = {
   title: 'RIFAZO-VE',
-  description: 'Participate in exciting raffles and win amazing prizes on RIFAZO!',
+  description: 'Participa en la mejor APP de Rifas',
 };
 
 export default function RootLayout({

@@ -1,9 +1,9 @@
 
 export interface AcceptedPaymentMethod {
-  id: string;
-  name: string;
+  id: string; 
+  name: string; 
   category: string;
-  // Ya no se guardarán los detalles específicos del admin en el objeto Raffle
+  adminProvidedDetails?: string; // Optional: For admin to provide specific details for THIS raffle's payment method
 }
 
 export interface Raffle {
@@ -18,9 +18,9 @@ export interface Raffle {
   prize: string;
   acceptedPaymentMethods?: AcceptedPaymentMethod[];
   creatorUsername?: string;
-  effectiveSoldNumbers?: number[]; // Array de números realmente vendidos (LS + mock, sin duplicados, no rechazados)
-  lotteryName?: string;
-  drawTime?: string;
+  effectiveSoldNumbers?: number[];
+  lotteryName?: string | null;
+  drawTime?: string | null;
 }
 
 export interface RaffleResult {
@@ -28,7 +28,7 @@ export interface RaffleResult {
   raffleId: string;
   raffleName: string;
   winningNumber: number;
-  winnerName?: string; // Optional: if winner is known
+  winnerName?: string;
   drawDate: string;
   prize: string;
 }
@@ -37,16 +37,16 @@ export interface Participation {
   id: string;
   raffleId: string;
   raffleName: string;
-  creatorUsername?: string; // Username of the raffle creator
-  participantUsername?: string; // Username of the user who made the purchase
+  creatorUsername?: string;
+  participantUsername?: string;
   numbers: number[];
   paymentStatus: 'pending' | 'confirmed' | 'rejected';
   purchaseDate: string; // ISO Date string
-  participantName?: string; // Name provided by user at purchase (for ticket display)
-  participantLastName?: string; // Last name provided by user
-  participantIdCard?: string; // ID card provided by user
-  participantPhone?: string; // Phone provided by user
-  paymentNotes?: string; // Optional notes from the user about the payment
+  participantName?: string;
+  participantLastName?: string;
+  participantIdCard?: string;
+  participantPhone?: string;
+  paymentNotes?: string;
 }
 
 export interface ManagedUser {
@@ -55,19 +55,17 @@ export interface ManagedUser {
   role: 'user' | 'admin' | 'founder';
   password?: string;
   
-  organizerType?: 'individual' | 'company'; 
+  organizerType?: 'individual' | 'company';
   publicAlias?: string;
   whatsappNumber?: string;
   locationState?: string;
   locationCity?: string;
-  email?: string; 
+  email?: string;
   bio?: string;
   adminPaymentMethodsInfo?: string;
 
-  fullName?: string; 
+  fullName?: string;
 
-  companyName?: string; 
-  rif?: string; 
+  companyName?: string;
+  rif?: string;
 }
-
-    
