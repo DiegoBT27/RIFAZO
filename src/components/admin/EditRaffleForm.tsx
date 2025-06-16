@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, type ChangeEvent, useEffect } from 'react';
+import { useState, type ChangeEvent, useEffect, useCallback } from 'react';
 import { useForm, type SubmitHandler, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import type { Raffle, AcceptedPaymentMethod } from '@/types';
 import { AVAILABLE_PAYMENT_METHODS } from '@/lib/payment-methods';
 import { DRAW_TIMES } from '@/lib/lottery-data';
@@ -56,8 +57,7 @@ const editRaffleFormSchema = z.object({
   prize: z.string().min(3, { message: "El premio debe tener al menos 3 caracteres." }),
   pricePerTicket: z.coerce.number().positive({ message: "El precio debe ser un número positivo." }),
   totalNumbers: z.coerce.number().int().min(10, { message: "Debe haber al menos 10 números." }).max(500, {message: "Máximo 500 números"}),
-  drawDate: z.date({ required_error: "La fecha del sorteo es obligatoria."})
-             .min(todayAtMidnight, { message: "La fecha del sorteo no puede ser en el pasado." }),
+  drawDate: z.date({ required_error: "La fecha del sorteo es obligatoria."}),
   lotteryName: z.string().optional().nullable(),
   drawTime: z.string().optional().nullable(),
   selectedPaymentMethodIds: z.array(z.string())
@@ -109,6 +109,7 @@ interface EditRaffleFormProps {
 
 export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProps) {
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(raffle?.image || null);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
@@ -464,7 +465,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
                     }}
                     initialFocus
                     locale={es}
-                    disabled={(date) => date < todayAtMidnight}
+                    disabled={currentUser?.role === 'founder' ? undefined : (date) => date < todayAtMidnight}
                   />
                 </PopoverContent>
               </Popover>
@@ -541,3 +542,5 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
     </div>
   );
 }
+
+    

@@ -12,7 +12,7 @@ import {
   where,
   writeBatch,
 } from 'firebase/firestore';
-import type { Raffle, ManagedUser, Participation } from '@/types';
+import type { Raffle, ManagedUser, Participation, RaffleResult } from '@/types';
 
 // Users Collection
 const usersCollection = collection(db, 'users');
@@ -89,6 +89,7 @@ export const updateUser = async (userId: string, userData: Partial<ManagedUser>)
       const value = userData[typedKey];
       
       if (value !== undefined) {
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
         if (typedKey === 'password' && value === '') {
         } else {
           dataToUpdate[typedKey] = value;
@@ -125,7 +126,7 @@ export const getRaffleById = async (raffleId: string): Promise<Raffle | null> =>
 };
 
 export const addRaffle = async (raffleData: Omit<Raffle, 'id' | 'soldNumbers' | 'effectiveSoldNumbers'>): Promise<Raffle> => {
-  const newRaffleData = { ...raffleData, soldNumbers: [] }; 
+  const newRaffleData = { ...raffleData, soldNumbers: [], status: 'active' as 'active' | 'pending_draw' | 'completed' | 'cancelled' }; 
   const docRef = await addDoc(rafflesCollection, newRaffleData);
   return { id: docRef.id, ...newRaffleData } as Raffle;
 };
@@ -144,6 +145,13 @@ export const deleteRaffleAndParticipations = async (raffleId: string): Promise<v
   const participationsQuery = query(participationsCollection, where('raffleId', '==', raffleId));
   const participationsSnapshot = await getDocs(participationsQuery);
   participationsSnapshot.forEach(doc => {
+    batch.delete(doc.ref);
+  });
+
+  // También eliminar resultados de rifa asociados
+  const resultsQuery = query(raffleResultsCollection, where('raffleId', '==', raffleId));
+  const resultsSnapshot = await getDocs(resultsQuery);
+  resultsSnapshot.forEach(doc => {
     batch.delete(doc.ref);
   });
 
@@ -187,4 +195,25 @@ export const deleteParticipation = async (participationId: string): Promise<void
   await deleteDoc(participationDoc);
 };
 
-    
+// RaffleResults Collection
+const raffleResultsCollection = collection(db, 'raffleResults');
+
+export const addRaffleResult = async (resultData: Omit<RaffleResult, 'id'>): Promise<RaffleResult> => {
+  const docRef = await addDoc(raffleResultsCollection, resultData);
+  return { id: docRef.id, ...resultData };
+};
+
+export const getRaffleResults = async (): Promise<RaffleResult[]> => {
+  const snapshot = await getDocs(raffleResultsCollection);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as RaffleResult));
+};
+
+export const getRaffleResultByRaffleId = async (raffleId: string): Promise<RaffleResult | null> => {
+  const q = query(raffleResultsCollection, where('raffleId', '==', raffleId));
+  const snapshot = await getDocs(q);
+  if (snapshot.empty) {
+    return null;
+  }
+  const docData = snapshot.docs[0];
+  return { id: docData.id, ...docData.data() } as RaffleResult;
+};

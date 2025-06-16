@@ -8,10 +8,23 @@ import { useAuth } from '@/contexts/AuthContext';
 import SectionTitle from '@/components/shared/SectionTitle';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, ListChecks, Edit, AlertCircle, Inbox, PackagePlus } from 'lucide-react';
+import { Loader2, ListChecks, Edit, AlertCircle, Inbox, PackagePlus, Trash2, Trophy, CalendarCheck2, AlertTriangle, Phone } from 'lucide-react';
 import type { Raffle } from '@/types';
-import { getRaffles } from '@/lib/firebase/firestoreService';
+import { getRaffles, deleteRaffleAndParticipations } from '@/lib/firebase/firestoreService';
 import { useToast } from '@/hooks/use-toast';
+import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import RegisterWinnerDialog from '@/components/admin/RegisterWinnerDialog';
 
 export default function MyRafflesPage() {
   const { user, isLoggedIn, isLoading: authIsLoading } = useAuth();
@@ -19,6 +32,9 @@ export default function MyRafflesPage() {
   const { toast } = useToast();
   const [myRaffles, setMyRaffles] = useState<Raffle[]>([]);
   const [pageIsLoading, setPageIsLoading] = useState(true);
+
+  const [isWinnerDialogOpen, setIsWinnerDialogOpen] = useState(false);
+  const [selectedRaffleForWinner, setSelectedRaffleForWinner] = useState<Raffle | null>(null);
 
   useEffect(() => {
     if (!authIsLoading) {
@@ -49,7 +65,18 @@ export default function MyRafflesPage() {
         filteredRaffles = [];
       }
       
-      filteredRaffles.sort((a, b) => new Date(b.drawDate).getTime() - new Date(a.drawDate).getTime());
+      filteredRaffles.sort((a, b) => {
+        const getStatusOrder = (status?: string) => {
+          if (status === 'active' || status === 'pending_draw') return 1;
+          if (status === 'completed') return 2;
+          if (status === 'cancelled') return 3;
+          return 4; 
+        };
+        const statusOrderA = getStatusOrder(a.status);
+        const statusOrderB = getStatusOrder(b.status);
+        if (statusOrderA !== statusOrderB) return statusOrderA - statusOrderB;
+        return new Date(b.drawDate).getTime() - new Date(a.drawDate).getTime();
+      });
       setMyRaffles(filteredRaffles);
     } catch (error) {
       console.error("[MyRafflesPage] Error loading raffles from Firestore:", error);
@@ -66,6 +93,43 @@ export default function MyRafflesPage() {
     }
   }, [authIsLoading, isLoggedIn, fetchMyRaffles]);
 
+  const handleDeleteRaffleConfirm = async (raffleId: string) => {
+    try {
+      await deleteRaffleAndParticipations(raffleId);
+      toast({ title: "Rifa Eliminada", description: "La rifa y todos sus datos asociados han sido eliminados." });
+      fetchMyRaffles(); 
+    } catch (error) {
+      console.error("Error deleting raffle:", error);
+      toast({ title: "Error al Eliminar", description: "No se pudo eliminar la rifa.", variant: "destructive" });
+    }
+  };
+
+  const handleOpenWinnerDialog = (raffle: Raffle) => {
+    setSelectedRaffleForWinner(raffle);
+    setIsWinnerDialogOpen(true);
+  };
+  
+  const getRaffleStatusBadge = (raffle: Raffle) => {
+    const drawDate = new Date(raffle.drawDate + 'T00:00:00');
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    if (raffle.status === 'completed') {
+      return <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-xs">Completada</Badge>;
+    }
+    if (raffle.status === 'cancelled') {
+      return <Badge variant="destructive" className="text-xs">Cancelada</Badge>;
+    }
+    if (drawDate < today && (raffle.status === 'active' || raffle.status === 'pending_draw')) { 
+      return <Badge variant="secondary" className="bg-yellow-500 text-yellow-900 hover:bg-yellow-500/90 text-xs">Pendiente Sorteo</Badge>;
+    }
+    if (raffle.status === 'active') {
+      return <Badge variant="outline" className="border-blue-500 text-blue-600 text-xs">Activa</Badge>;
+    }
+    return <Badge variant="outline" className="text-xs">Desconocido</Badge>;
+  };
+
+
   if (authIsLoading || pageIsLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
@@ -76,7 +140,6 @@ export default function MyRafflesPage() {
   }
 
   if (!isLoggedIn || (user?.role !== 'admin' && user?.role !== 'founder')) {
-     // This case should ideally be caught by the useEffect redirect, but as a fallback:
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
         <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
@@ -102,12 +165,28 @@ export default function MyRafflesPage() {
 
       {myRaffles.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {myRaffles.map((raffle) => (
-            <Card key={raffle.id} className="shadow-lg hover:shadow-xl transition-shadow duration-300">
-              <CardHeader>
-                <CardTitle className="font-headline text-lg text-foreground line-clamp-2">{raffle.name}</CardTitle>
+          {myRaffles.map((raffle) => {
+            const drawDateObj = new Date(raffle.drawDate + 'T00:00:00');
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            const drawDateHasPassed = drawDateObj < today;
+            
+            const canRegisterWinner = (drawDateHasPassed || raffle.status === 'pending_draw') && raffle.status !== 'completed' && raffle.status !== 'cancelled';
+            const canEditRaffle = raffle.status !== 'completed' && raffle.status !== 'cancelled';
+            const canDeleteRaffle = 
+              (user?.role === 'founder') || // Founder can delete any raffle
+              (user?.role === 'admin' && raffle.creatorUsername === user?.username && raffle.status !== 'completed' && raffle.status !== 'cancelled');
+
+
+            return (
+            <Card key={raffle.id} className="shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col">
+              <CardHeader className="pb-3">
+                <div className="flex justify-between items-start">
+                    <CardTitle className="font-headline text-lg text-foreground line-clamp-2 flex-grow pr-2">{raffle.name}</CardTitle>
+                    {getRaffleStatusBadge(raffle)}
+                </div>
                 <CardDescription className="text-xs">
-                  Sorteo: {new Date(raffle.drawDate + 'T00:00:00').toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })} | 
+                  Sorteo: {drawDateObj.toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })} | 
                   Precio: ${raffle.pricePerTicket}
                 </CardDescription>
                  {user?.role === 'founder' && raffle.creatorUsername && (
@@ -115,19 +194,76 @@ export default function MyRafflesPage() {
                         Creador: {raffle.creatorUsername}
                     </CardDescription>
                 )}
+                {raffle.status === 'completed' && (
+                    <div className="text-xs mt-1.5 space-y-0.5">
+                        <p className="font-medium text-green-700">
+                            Nro. Ganador: {raffle.winningNumber != null ? String(raffle.winningNumber) : <span className="italic text-muted-foreground">Pendiente</span>}
+                        </p>
+                        { (raffle.winningNumber != null) &&
+                          <>
+                            <p className="text-muted-foreground">
+                                Ganador: {raffle.winnerName || <span className="italic">No registrado</span>}
+                            </p>
+                            <p className="text-muted-foreground flex items-center">
+                                <Phone className="h-3 w-3 mr-1"/>
+                                Tel: {raffle.winnerPhone || <span className="italic">No registrado</span>}
+                            </p>
+                          </>
+                        }
+                        { raffle.winningNumber == null &&
+                            <p className="text-muted-foreground italic">Resultado pendiente de registro completo.</p>
+                        }
+                    </div>
+                )}
               </CardHeader>
-              <CardContent className="pt-0">
+              <CardContent className="pt-0 flex-grow">
                 <p className="text-sm text-muted-foreground line-clamp-3">{raffle.description}</p>
               </CardContent>
-              <CardFooter className="p-4">
-                <Button asChild variant="outline" size="sm" className="w-full">
-                  <Link href={`/admin/my-raffles/${raffle.id}/edit`}>
-                    <Edit className="mr-2 h-4 w-4" /> Editar Rifa
-                  </Link>
-                </Button>
+              <CardFooter className="p-4 flex flex-col space-y-2">
+                <div className="w-full flex space-x-2">
+                    {canEditRaffle && (
+                    <Button asChild variant="outline" size="sm" className="flex-1 text-xs h-8">
+                        <Link href={`/admin/my-raffles/${raffle.id}/edit`}>
+                        <Edit className="mr-2 h-3.5 w-3.5" /> Editar
+                        </Link>
+                    </Button>
+                    )}
+                    {canRegisterWinner && (
+                    <Button variant="default" size="sm" className="flex-1 bg-green-600 hover:bg-green-700 text-white text-xs h-8" onClick={() => handleOpenWinnerDialog(raffle)}>
+                        <Trophy className="mr-2 h-3.5 w-3.5" /> Registrar Ganador
+                    </Button>
+                    )}
+                </div>
+                {canDeleteRaffle && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm" className="w-full text-xs h-8 mt-2">
+                        <Trash2 className="mr-2 h-3.5 w-3.5" /> Eliminar Rifa
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center"><AlertTriangle className="text-destructive mr-2 h-5 w-5"/>¿Eliminar Rifa "{raffle.name}"?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Esta acción eliminará permanentemente la rifa y todos sus datos asociados (participaciones, resultados). No se puede deshacer.
+                          {raffle.status === 'completed' && user?.role === 'founder' && " Esta rifa ya está completada."}
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel className="text-xs h-8">Cancelar</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => handleDeleteRaffleConfirm(raffle.id)} className="bg-destructive hover:bg-destructive/90 text-xs h-8">
+                          Sí, Eliminar Permanentemente
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+                 {raffle.status === 'completed' && !canDeleteRaffle && user?.role === 'admin' && (
+                  <p className="text-xs text-muted-foreground text-center pt-1">Las rifas completadas solo pueden ser eliminadas por un Fundador.</p>
+                )}
               </CardFooter>
             </Card>
-          ))}
+          )})}
         </div>
       ) : (
         <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
@@ -140,6 +276,18 @@ export default function MyRafflesPage() {
           </p>
         </div>
       )}
+      {selectedRaffleForWinner && (
+        <RegisterWinnerDialog
+          raffle={selectedRaffleForWinner}
+          isOpen={isWinnerDialogOpen}
+          onOpenChange={setIsWinnerDialogOpen}
+          onSuccess={() => {
+            fetchMyRaffles(); 
+            setSelectedRaffleForWinner(null); 
+          }}
+        />
+      )}
     </div>
   );
 }
+

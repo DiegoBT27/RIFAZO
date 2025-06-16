@@ -59,14 +59,14 @@ export default function NumberSelector({
               animate={{ scale: isSelected ? 1.05 : 1 }}
               transition={{ type: "spring", stiffness: 300, damping: 20 }}
             >
-              {String(number).padStart(String(totalNumbers).length, '0')}
+              {String(number)}
             </motion.button>
           );
         })}
       </div>
       {selectedNumbers.length > 0 && (
         <div className="mt-2 sm:mt-2.5 p-2 sm:p-2.5 bg-secondary rounded-md shadow">
-          <p className="font-medium text-[0.7rem] sm:text-xs">Números seleccionados: {selectedNumbers.map(n => String(n).padStart(String(totalNumbers).length, '0')).join(', ')}</p>
+          <p className="font-medium text-[0.7rem] sm:text-xs">Números seleccionados: {selectedNumbers.map(n => String(n)).join(', ')}</p>
           <p className="font-semibold text-xs sm:text-sm text-red-600">Total a pagar: ${selectedNumbers.length * pricePerTicket}</p> {/* Changed text-orange-600 to text-red-600 */}
         </div>
       )}

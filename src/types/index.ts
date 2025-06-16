@@ -3,7 +3,7 @@ export interface AcceptedPaymentMethod {
   id: string; 
   name: string; 
   category: string;
-  adminProvidedDetails?: string; // Optional: For admin to provide specific details for THIS raffle's payment method
+  adminProvidedDetails?: string; 
 }
 
 export interface Raffle {
@@ -21,16 +21,22 @@ export interface Raffle {
   effectiveSoldNumbers?: number[];
   lotteryName?: string | null;
   drawTime?: string | null;
+  winningNumber?: number | null;
+  winnerName?: string | null;
+  winnerPhone?: string | null; // Nuevo campo para el teléfono del ganador
+  status?: 'active' | 'pending_draw' | 'completed' | 'cancelled';
 }
 
 export interface RaffleResult {
-  id: string;
-  raffleId: string;
+  id: string; // Firestore ID
+  raffleId: string; // ID de la rifa original
   raffleName: string;
   winningNumber: number;
-  winnerName?: string;
-  drawDate: string;
-  prize: string;
+  winnerName?: string | null;
+  winnerPhone?: string | null; // Nuevo campo para el teléfono del ganador
+  drawDate: string; // Fecha en que se realizó el sorteo (de la rifa original)
+  prize: string; // Premio otorgado (de la rifa original)
+  creatorUsername?: string; // Username del creador de la rifa
 }
 
 export interface Participation {

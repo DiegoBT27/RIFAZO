@@ -15,11 +15,12 @@ import {
   DialogFooter, DialogClose,
 } from '@/components/ui/dialog';
 import type { Participation, ManagedUser, Raffle, AcceptedPaymentMethod } from '@/types';
-import { Ticket, CalendarDays, AlertCircle, CheckCircle, Clock, ShoppingBag, Eye, Info, Loader2, UserCircle as UserCircleIcon, MessageSquare, CreditCard, ListChecks } from 'lucide-react';
+import { Ticket, CalendarDays, AlertCircle, CheckCircle, Clock, ShoppingBag, Eye, Info, Loader2, UserCircle as UserCircleIcon, MessageSquare, CreditCard, ListChecks, Trophy, Gift, Phone as PhoneIcon } from 'lucide-react';
 import { getParticipationsByUsername, getUserByUsername as getCreatorProfileByUsername, getRaffleById } from '@/lib/firebase/firestoreService';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
 
 const UserProfileDialog = dynamic(() => import('@/components/shared/UserProfileDialog'), {
   loading: () => <div className="p-4 text-center">Cargando perfil...</div>,
@@ -30,14 +31,14 @@ const FALLBACK_ADMIN_WHATSAPP_NUMBER = "584141135956";
 
 const statusIcons: Record<string, { icon: JSX.Element; color: string; title: string }> = {
   pending: { icon: <Clock className="h-4 w-4" />, color: 'text-yellow-500', title: 'Pendiente de Confirmación por el Organizador' },
-  confirmed: { icon: <CheckCircle className="h-4 w-4" />, color: 'text-green-500', title: 'Pago Confirmado por el Organizador' },
+  confirmed: { icon: <CheckCircle className="h-4 w-4" />, color: 'text-green-500', title: 'Pago Confirmado' },
   rejected: { icon: <AlertCircle className="h-4 w-4" />, color: 'text-red-500', title: 'Pago Rechazado por el Organizador' },
   unknown: { icon: <Info className="h-4 w-4" />, color: 'text-gray-500', title: 'Estado Desconocido' },
 };
 
 const statusTextForDialog: Record<string, string> = {
   pending: 'Pago Pendiente',
-  confirmed: 'Pago Confirmado Exitosamente por el Organizador',
+  confirmed: 'Pago Confirmado',
   rejected: 'Pago Rechazado por el Organizador (Contacta al organizador)',
   unknown: 'Estado del Pago Desconocido',
 };
@@ -180,10 +181,18 @@ ID de Participación: ${participation.id}`;
             const currentStatusTextForDialog = statusTextForDialog[paymentStatusKey] || statusTextForDialog.unknown;
             const currentStatusVariantForDialog = statusVariantForDialog[paymentStatusKey] || statusVariantForDialog.unknown;
 
+            const isRaffleCompleted = participationRaffle?.status === 'completed' && participationRaffle.winningNumber != null;
+            const isWinner = isRaffleCompleted && participation.numbers.includes(participationRaffle.winningNumber!);
+            const winningNumberStr = participationRaffle?.winningNumber != null ? String(participationRaffle.winningNumber) : '';
+
             return (
             <Dialog key={participation.id}>
               <DialogTrigger asChild>
-                <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col justify-between cursor-pointer">
+                <Card className={cn(
+                  "shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col justify-between cursor-pointer",
+                  isWinner && "border-2 border-green-500 bg-green-500/10",
+                  isRaffleCompleted && !isWinner && "border-muted-foreground/30"
+                )}>
                   <CardHeader className="pb-2 sm:pb-3 pt-3 sm:pt-4 px-3 sm:px-4">
                     <div className="flex justify-between items-start">
                       <CardTitle className="font-headline text-base sm:text-lg text-foreground line-clamp-2 flex-grow pr-2">{participationRaffle?.name || participation.raffleName}</CardTitle>
@@ -191,15 +200,29 @@ ID de Participación: ${participation.id}`;
                         {React.cloneElement(statusDisplay.icon, { className: "h-5 w-5"})}
                       </span>
                     </div>
+                    {isWinner && (
+                      <Badge variant="default" className="mt-1.5 bg-green-600 hover:bg-green-700 text-green-50 py-1 text-xs sm:text-sm w-fit">
+                        <Trophy className="mr-1.5 h-4 w-4" /> ¡BOLETO GANADOR!
+                      </Badge>
+                    )}
                   </CardHeader>
                   <CardContent className="p-3 sm:p-4 pt-1.5 sm:pt-2 space-y-1 text-xs">
-                    <p className="flex items-center"><Ticket className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> Números: <span className="font-semibold ml-1">{participation.numbers.join(', ')}</span></p>
+                    <p className="flex items-center"><Ticket className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> Números: <span className="font-semibold ml-1">{participation.numbers.map(n => String(n)).join(', ')}</span></p>
                     <p className="flex items-center"><CalendarDays className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> Fecha: <span className="font-semibold ml-1">{new Date(participation.purchaseDate).toLocaleDateString('es-VE')}</span></p>
                     {participation.participantName && (
                       <p className="flex items-center"><UserCircleIcon className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> A nombre de: <span className="font-semibold ml-1">{participation.participantName} {participation.participantLastName}</span></p>
                     )}
                     {creatorProfile && (
                       <p className="flex items-center"><ShoppingBag className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> De: <span className="font-semibold ml-1">{creatorProfile.publicAlias || creatorProfile.username}</span></p>
+                    )}
+                     {isRaffleCompleted && (
+                        <p className="mt-1.5 pt-1.5 border-t border-dashed text-xs">
+                            {isWinner ? (
+                                <span className="font-semibold text-green-700">Tu número {winningNumberStr} fue el ganador del premio: {participationRaffle.prize}.</span>
+                            ) : (
+                                <span className="text-muted-foreground">Sorteo finalizado. Nro. Ganador: {winningNumberStr}.</span>
+                            )}
+                        </p>
                     )}
                   </CardContent>
                   <CardFooter className="p-3 sm:p-4 flex items-center justify-end gap-2">
@@ -237,7 +260,7 @@ ID de Participación: ${participation.id}`;
                   <ScrollArea className="max-h-[60vh] pr-2">
                     <div className="py-4 space-y-2 text-sm">
                       <p><strong>Rifa:</strong> {participationRaffle?.name || participation.raffleName}</p>
-                      <p><strong>Números:</strong> {participation.numbers.join(', ')}</p>
+                      <p><strong>Números:</strong> {participation.numbers.map(n => String(n)).join(', ')}</p>
                       <p><strong>Fecha de Compra:</strong> {new Date(participation.purchaseDate).toLocaleString('es-VE')}</p>
                       <p><strong>Estado del Pago:</strong> <Badge variant={currentStatusVariantForDialog} className="py-1"> {React.cloneElement(statusIcons[paymentStatusKey]?.icon || statusIcons.unknown.icon, {className:"h-3.5 w-3.5"})} <span className="ml-1">{currentStatusTextForDialog}</span></Badge></p>
                       {creatorProfile && <p><strong>Organizador:</strong> {creatorProfile.publicAlias || creatorProfile.username}</p>}
@@ -248,6 +271,12 @@ ID de Participación: ${participation.id}`;
                           <strong>Método de Rifa:</strong> <span className="ml-1">{participationRaffle.lotteryName}</span>
                         </p>
                       )}
+                       {participationRaffle?.drawDate && (
+                        <p className="flex items-center">
+                          <CalendarDays className="mr-1.5 h-4 w-4 text-muted-foreground" />
+                          <strong>Fecha del Sorteo:</strong> <span className="ml-1">{new Date(participationRaffle.drawDate + 'T00:00:00').toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                        </p>
+                      )}
                       {participationRaffle?.drawTime && (
                         <p className="flex items-center">
                           <Clock className="mr-1.5 h-4 w-4 text-muted-foreground" />
@@ -255,6 +284,37 @@ ID de Participación: ${participation.id}`;
                         </p>
                       )}
                       {participation.paymentNotes && <p><strong>Notas Adicionales del Comprador:</strong> {participation.paymentNotes}</p>}
+
+                      {isRaffleCompleted && (
+                        <div className={cn(
+                            "mt-3 p-3 rounded-md border space-y-0.5",
+                            isWinner ? "bg-green-500/10 border-green-500" : "bg-muted/30 border-muted-foreground/20"
+                        )}>
+                            <h4 className={cn(
+                                "font-semibold text-sm flex items-center mb-1",
+                                isWinner ? "text-green-700" : "text-foreground"
+                            )}>
+                                {isWinner ? <Trophy className="h-4 w-4 mr-1.5" /> : <Gift className="h-4 w-4 mr-1.5" />}
+                                Resultado del Sorteo
+                            </h4>
+                            {isWinner ? (
+                                <>
+                                <p className="text-green-700">¡Felicidades! Tu número <strong>{winningNumberStr}</strong> fue el ganador.</p>
+                                <p className="text-muted-foreground">Premio: {participationRaffle.prize}</p>
+                                {participationRaffle.winnerName && <p className="text-muted-foreground">Nombre Registrado: {participationRaffle.winnerName}</p>}
+                                {participationRaffle.winnerPhone && <p className="text-muted-foreground flex items-center"><PhoneIcon className="h-3.5 w-3.5 mr-1"/> Tel. Contacto: {participationRaffle.winnerPhone}</p>}
+                                </>
+                            ) : (
+                                <>
+                                <p className="text-muted-foreground">El sorteo ha finalizado. El número ganador fue: <strong>{winningNumberStr}</strong>.</p>
+                                <p className="text-muted-foreground">Premio: {participationRaffle.prize}</p>
+                                {participationRaffle.winnerName && <p className="text-muted-foreground">Ganador: {participationRaffle.winnerName}</p>}
+                                {participationRaffle.winnerPhone && <p className="text-muted-foreground flex items-center"><PhoneIcon className="h-3.5 w-3.5 mr-1"/>Tel. Ganador: {participationRaffle.winnerPhone}</p>}
+                                </>
+                            )}
+                        </div>
+                      )}
+
 
                       <div className="mt-3 border-t pt-3">
                         <h4 className="font-semibold text-sm text-foreground mb-1.5">Instrucciones de Pago del Organizador:</h4>
@@ -318,3 +378,4 @@ ID de Participación: ${participation.id}`;
     </div>
   );
 }
+
