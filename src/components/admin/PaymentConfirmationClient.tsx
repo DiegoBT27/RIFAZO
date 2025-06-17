@@ -260,7 +260,7 @@ export default function AdminPaymentManager() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-xl sm:text-2xl flex items-center">
-            <BadgeEuro className="mr-2 h-5 w-5 sm:h-6 sm:w-6 text-primary"/> Pagos Pendientes de Confirmación
+            <BadgeEuro className="mr-2 h-5 w-5 sm:h-6 sm:w-6 text-primary"/> Pagos Pendientes
             <Badge variant="secondary" className="ml-2">{pendingParticipations.length}</Badge>
           </CardTitle>
           <CardDescription className="text-xs sm:text-sm">
@@ -351,3 +351,4 @@ export default function AdminPaymentManager() {
     </div>
   );
 }
+

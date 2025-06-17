@@ -51,8 +51,9 @@ export default function PaymentManagementPage() {
   console.log('[PaymentManagementPage] Rendering payment manager.'); 
   return (
     <div>
-      <SectionTitle>Gestionar Confirmaciones de Pago</SectionTitle>
+      <SectionTitle>Gestionar Pagos</SectionTitle>
       <AdminPaymentManager />
     </div>
   );
 }
+

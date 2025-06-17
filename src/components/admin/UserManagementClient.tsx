@@ -21,7 +21,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2, UserPlus, Trash2, Users, AlertCircle, KeyRound, Edit3, UserCog, Info, Building, UserX, UserCheck, ShieldAlert } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
-// Switch ya no se necesita aquí para el formulario de edición
+import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
@@ -130,7 +130,6 @@ const editUserFormSchema = z.object({
   password: z.string().optional(),
   confirmPassword: z.string().optional(),
   role: z.enum(['user', 'admin', 'founder'], { required_error: "El rol es obligatorio." }),
-  // isBlocked ya no se gestiona aquí
   organizerType: z.enum(['individual', 'company']).optional(),
   fullName: z.string().optional(),
   companyName: z.string().optional(),
@@ -243,7 +242,6 @@ export default function UserManagementClient() {
 
   const selectedRoleForEdit = watchEdit('role');
   const selectedOrganizerTypeForEdit = watchEdit('organizerType');
-  // isBlockedForEdit ya no se necesita
 
   const fetchUsersFromDB = useCallback(async () => {
     setIsLoading(true);
@@ -496,7 +494,6 @@ export default function UserManagementClient() {
         userDataToUpdate.fullName = undefined;
         userDataToUpdate.companyName = undefined;
         userDataToUpdate.rif = undefined;
-        // Keep other profile fields if they were already there, user might want them.
       } else if (userDataToUpdate.organizerType === 'individual') {
         userDataToUpdate.companyName = undefined;
         userDataToUpdate.rif = undefined;
@@ -538,7 +535,7 @@ export default function UserManagementClient() {
         });
       }
       setIsEditDialogOpen(false);
-      fetchUsersFromDB(); // Refresh list after update
+      fetchUsersFromDB(); 
     } catch (error) {
       console.error("Error updating user:", error);
       toast({ title: "Error de Edición", description: "No se pudo actualizar el usuario.", variant: "destructive" });
@@ -610,9 +607,8 @@ export default function UserManagementClient() {
       id: userToEdit.id,
       username: userToEdit.username,
       role: userToEdit.role,
-      password: '', // No precargar contraseña
+      password: '', 
       confirmPassword: '',
-      // isBlocked: userToEdit.isBlocked || false, // Ya no se gestiona aquí
       organizerType: userToEdit.organizerType || (userToEdit.role === 'admin' || userToEdit.role === 'founder' ? 'individual' : undefined),
       fullName: userToEdit.fullName || '',
       companyName: userToEdit.companyName || '',
@@ -731,7 +727,6 @@ export default function UserManagementClient() {
                   </div>
                   {errors.confirmPassword && <p className="text-sm text-destructive mt-1">{errors.confirmPassword.message}</p>}
                 </div>
-                 {/* isBlocked se mantiene aquí para la creación, pero es opcional y por defecto false */}
                 <input type="hidden" {...register("isBlocked")} value={false.toString()} />
               </>
             )}
@@ -755,81 +750,81 @@ export default function UserManagementClient() {
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="font-headline text-2xl flex items-center">
-            <Users className="mr-2 h-6 w-6 text-primary" /> Usuarios de la Plataforma
+            <Users className="mr-2 h-6 w-6 text-primary" /> USUARIOS
           </CardTitle>
           <CardDescription>
-            Lista de todos los usuarios registrados en Firestore.
+            Lista de usuarios registrados
           </CardDescription>
         </CardHeader>
         <CardContent>
           {users.length > 0 ? (
-            <ScrollArea className="h-[400px] pr-3">
-              <div className="space-y-3">
-                {users.map((userEntry) => (
-                  <Card key={userEntry.id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-center bg-secondary/20">
-                    <div className="mb-3 sm:mb-0 flex-grow">
-                      <p className="font-semibold text-foreground flex items-center">
-                        {userEntry.username}
-                        {userEntry.isBlocked && <UserX className="ml-2 h-4 w-4 text-destructive" titleAccess="Usuario Bloqueado"/>}
-                        {!userEntry.isBlocked && <UserCheck className="ml-2 h-4 w-4 text-green-600" titleAccess="Usuario Activo"/>}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Rol: <span className={userEntry.role === 'admin' ? 'font-bold text-primary' : (userEntry.role === 'founder' ? 'font-bold text-accent' : '')}>{userEntry.role}</span>
-                        {userEntry.organizerType && ` - Tipo: ${userEntry.organizerType === 'individual' ? 'Individual' : 'Empresa'}`}
-                         {userEntry.isBlocked && <Badge variant="destructive" className="ml-2 text-xs">Bloqueado</Badge>}
-                      </p>
-                      {(userEntry.organizerType === 'company' && userEntry.companyName) && <p className="text-xs text-muted-foreground">Empresa: {userEntry.companyName}</p>}
-                      {(userEntry.organizerType === 'individual' && userEntry.fullName) && <p className="text-xs text-muted-foreground">Nombre: {userEntry.fullName}</p>}
-                      {userEntry.rif && <p className="text-xs text-muted-foreground">RIF: {userEntry.rif}</p>}
-                    </div>
-                    <div className="flex space-x-2 flex-shrink-0">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleOpenEditDialog(userEntry)}
-                        className="text-xs h-8"
-                      >
-                        <Edit3 className="mr-1 h-3.5 w-3.5" /> Editar
-                      </Button>
-                      <Button
-                        variant={userEntry.isBlocked ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => handleToggleBlockUser(userEntry)}
+            <div className="space-y-3">
+              {users.map((userEntry) => (
+                <Card key={userEntry.id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-center bg-secondary/20">
+                  <div className="mb-3 sm:mb-0 flex-grow">
+                    <p className="font-semibold text-foreground flex items-center">
+                      {userEntry.username}
+                      {userEntry.isBlocked && <UserX className="ml-2 h-4 w-4 text-destructive" titleAccess="Usuario Bloqueado"/>}
+                      {!userEntry.isBlocked && <UserCheck className="ml-2 h-4 w-4 text-green-600" titleAccess="Usuario Activo"/>}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Rol: <span className={userEntry.role === 'admin' ? 'font-bold text-primary' : (userEntry.role === 'founder' ? 'font-bold text-accent' : '')}>{userEntry.role}</span>
+                      {userEntry.organizerType && ` - Tipo: ${userEntry.organizerType === 'individual' ? 'Individual' : 'Empresa'}`}
+                       {userEntry.isBlocked && <Badge variant="destructive" className="ml-2 text-xs">Bloqueado</Badge>}
+                    </p>
+                    {(userEntry.organizerType === 'company' && userEntry.companyName) && <p className="text-xs text-muted-foreground">Empresa: {userEntry.companyName}</p>}
+                    {(userEntry.organizerType === 'individual' && userEntry.fullName) && <p className="text-xs text-muted-foreground">Nombre: {userEntry.fullName}</p>}
+                    {userEntry.rif && <p className="text-xs text-muted-foreground">RIF: {userEntry.rif}</p>}
+                  </div>
+                  <div className="flex items-center space-x-2 flex-shrink-0">
+                    <div className="flex items-center space-x-1" title={userEntry.isBlocked ? "Usuario Bloqueado" : "Usuario Activo"}>
+                       <Switch
+                        id={`block-switch-${userEntry.id}`}
+                        checked={userEntry.isBlocked || false}
+                        onCheckedChange={() => handleToggleBlockUser(userEntry)}
                         disabled={userEntry.username === 'fundador'}
-                        className={cn(
-                          "text-xs h-8",
-                          userEntry.isBlocked ? "bg-green-600 hover:bg-green-700 text-white" : "border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                        )}
-                      >
-                        {userEntry.isBlocked ? <UserCheck className="mr-1 h-3.5 w-3.5" /> : <ShieldAlert className="mr-1 h-3.5 w-3.5" />}
-                        {userEntry.isBlocked ? "Desbloq." : "Bloquear"}
-                      </Button>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="destructive" size="sm" disabled={userEntry.username === 'fundador'} className="text-xs h-8">
-                              <Trash2 className="mr-1 h-3.5 w-3.5" /> Eliminar
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Esta acción no se puede deshacer. Esto eliminará permanentemente al usuario <span className="font-bold">{userEntry.username}</span> de Firestore.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel className="text-xs h-8">Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDeleteUserConfirm(userEntry.id)} className="bg-destructive hover:bg-destructive/90 text-xs h-8">
-                              Sí, eliminar usuario
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                        aria-label={userEntry.isBlocked ? "Desbloquear usuario" : "Bloquear usuario"}
+                      />
+                       <Label htmlFor={`block-switch-${userEntry.id}`} className="sr-only">
+                        {userEntry.isBlocked ? "Desbloquear" : "Bloquear"}
+                      </Label>
                     </div>
-                  </Card>
-                ))}
-              </div>
-            </ScrollArea>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => handleOpenEditDialog(userEntry)}
+                      title="Editar Usuario"
+                      className="h-8 w-8"
+                    >
+                      <Edit3 className="h-4 w-4" />
+                      <span className="sr-only">Editar</span>
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="destructive" size="icon" disabled={userEntry.username === 'fundador'} className="h-8 w-8" title="Eliminar Usuario">
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">Eliminar</span>
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Esta acción no se puede deshacer. Esto eliminará permanentemente al usuario <span className="font-bold">{userEntry.username}</span> de Firestore.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel className="text-xs h-8">Cancelar</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => handleDeleteUserConfirm(userEntry.id)} className="bg-destructive hover:bg-destructive/90 text-xs h-8">
+                            Sí, eliminar usuario
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                </Card>
+              ))}
+            </div>
           ) : (
             <div className="text-center py-6 border-2 border-dashed border-muted-foreground/30 rounded-lg">
               <Users className="h-12 w-12 mx-auto text-muted-foreground/70 mb-3" />
@@ -898,7 +893,6 @@ export default function UserManagementClient() {
                 />
                 {editErrors.role && <p className="text-sm text-destructive mt-1">{editErrors.role.message}</p>}
               </div>
-              {/* El switch de isBlocked ya no está aquí */}
 
               {renderProfileFields(editRegister, editErrors, isEditSubmitting, 'edit-', (editingUser.username === 'fundador' && selectedRoleForEdit !== 'founder'), selectedRoleForEdit, selectedOrganizerTypeForEdit, editControl)}
 
@@ -919,3 +913,6 @@ export default function UserManagementClient() {
     </div>
   );
 }
+
+
+    
