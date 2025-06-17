@@ -41,7 +41,7 @@ import { Phone } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
-import { addRaffle } from '@/lib/firebase/firestoreService';
+import { addRaffle, addActivityLog } from '@/lib/firebase/firestoreService';
 
 const todayAtMidnight = new Date();
 todayAtMidnight.setHours(0, 0, 0, 0);
@@ -219,6 +219,21 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
 
     try {
       const newRaffle = await addRaffle(raffleDataForDb);
+      await addActivityLog({
+        adminUsername: currentUser.username,
+        actionType: 'RAFFLE_CREATED',
+        targetInfo: `Rifa: ${newRaffle.name}`,
+        details: { 
+          raffleId: newRaffle.id, 
+          raffleName: newRaffle.name,
+          prize: newRaffle.prize,
+          pricePerTicket: newRaffle.pricePerTicket,
+          totalNumbers: newRaffle.totalNumbers,
+          drawDate: newRaffle.drawDate,
+          lotteryName: newRaffle.lotteryName,
+          drawTime: newRaffle.drawTime,
+        }
+      });
       toast({
         title: "Rifa Creada Exitosamente",
         description: `La rifa "${newRaffle.name}" ha sido guardada en Firestore.`,

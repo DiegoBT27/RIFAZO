@@ -75,7 +75,7 @@ const RaffleCard = React.memo(function RaffleCard({ raffle, currentUser, onDelet
 
 
   return (
-    <Card className="flex flex-col h-full shadow-lg hover:shadow-xl transition-shadow duration-300">
+    <Card className="flex flex-col h-full w-[21.25rem] shadow-lg hover:shadow-xl transition-shadow duration-300">
       <CardHeader className="p-0">
         <Image
           src={raffle.image}
@@ -87,7 +87,7 @@ const RaffleCard = React.memo(function RaffleCard({ raffle, currentUser, onDelet
         />
       </CardHeader>
       <CardContent className="flex-grow p-3 sm:p-4 pt-1.5 sm:pt-2">
-        <CardTitle className="font-headline text-md sm:text-lg mb-1 sm:mb-1.5 line-clamp-2">{raffle.name}</CardTitle>
+        <CardTitle className="font-headline text-md sm:text-lg my-2 sm:my-2.5 line-clamp-2">{raffle.name}</CardTitle>
         <p className="text-xs sm:text-sm text-muted-foreground mb-1.5 sm:mb-2 line-clamp-2 sm:line-clamp-3">{raffle.description}</p>
         <div className="space-y-0.5 sm:space-y-1 text-xs">
           <div className="flex items-center">
@@ -179,4 +179,3 @@ const RaffleCard = React.memo(function RaffleCard({ raffle, currentUser, onDelet
 });
 
 export default RaffleCard;
-

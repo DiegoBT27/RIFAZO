@@ -4,6 +4,7 @@ import {
   collection,
   doc,
   addDoc,
+  setDoc,
   getDoc,
   getDocs,
   updateDoc,
@@ -11,8 +12,12 @@ import {
   query,
   where,
   writeBatch,
+  serverTimestamp,
+  orderBy,
+  limit,
+  Timestamp,
 } from 'firebase/firestore';
-import type { Raffle, ManagedUser, Participation, RaffleResult } from '@/types';
+import type { Raffle, ManagedUser, Participation, RaffleResult, ActivityLog } from '@/types';
 
 // Users Collection
 const usersCollection = collection(db, 'users');
@@ -37,9 +42,10 @@ export const addUser = async (userData: Omit<ManagedUser, 'id'>): Promise<Manage
     username: userData.username,
     password: userData.password, 
     role: userData.role || 'user',
+    isBlocked: userData.isBlocked || false,
   };
 
-  const optionalFields: (keyof Omit<ManagedUser, 'id' | 'username' | 'password' | 'role'>)[] = [
+  const optionalFields: (keyof Omit<ManagedUser, 'id' | 'username' | 'password' | 'role' | 'isBlocked'>)[] = [
     'organizerType', 'fullName', 'companyName', 'rif', 'publicAlias',
     'whatsappNumber', 'locationState', 'locationCity',
     'email', 'bio', 'adminPaymentMethodsInfo'
@@ -64,6 +70,7 @@ export const addUser = async (userData: Omit<ManagedUser, 'id'>): Promise<Manage
     username: dataToSave.username,
     password: dataToSave.password, 
     role: dataToSave.role,
+    isBlocked: dataToSave.isBlocked,
     organizerType: dataToSave.organizerType, 
     fullName: dataToSave.fullName,
     companyName: dataToSave.companyName,
@@ -88,7 +95,9 @@ export const updateUser = async (userId: string, userData: Partial<ManagedUser>)
       const typedKey = key as keyof Partial<ManagedUser>;
       const value = userData[typedKey];
       
-      if (value !== undefined) {
+      if (typedKey === 'isBlocked') {
+        dataToUpdate[typedKey] = value === undefined ? false : value;
+      } else if (value !== undefined) {
         // eslint-disable-next-line @typescript-eslint/no-empty-function
         if (typedKey === 'password' && value === '') {
         } else {
@@ -148,7 +157,6 @@ export const deleteRaffleAndParticipations = async (raffleId: string): Promise<v
     batch.delete(doc.ref);
   });
 
-  // También eliminar resultados de rifa asociados
   const resultsQuery = query(raffleResultsCollection, where('raffleId', '==', raffleId));
   const resultsSnapshot = await getDocs(resultsQuery);
   resultsSnapshot.forEach(doc => {
@@ -216,4 +224,136 @@ export const getRaffleResultByRaffleId = async (raffleId: string): Promise<Raffl
   }
   const docData = snapshot.docs[0];
   return { id: docData.id, ...docData.data() } as RaffleResult;
+};
+
+// ActivityLogs Collection
+const activityLogsCollection = collection(db, 'activityLogs');
+
+export const addActivityLog = async (logData: Omit<ActivityLog, 'id' | 'timestamp'>): Promise<void> => {
+  try {
+    await addDoc(activityLogsCollection, {
+      ...logData,
+      timestamp: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error("Error adding activity log: ", error);
+  }
+};
+
+export const getActivityLogs = async (limitCount: number = 100): Promise<ActivityLog[]> => {
+  const q = query(activityLogsCollection, orderBy('timestamp', 'desc'), limit(limitCount));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      ...data,
+      timestamp: data.timestamp?.toDate ? data.timestamp.toDate() : new Date(0) 
+    } as ActivityLog;
+  });
+};
+
+// --- Backup and Restore ---
+
+const serializeDocument = (docData: Record<string, any>): Record<string, any> => {
+  const serialized: Record<string, any> = {};
+  for (const key in docData) {
+    if (Object.prototype.hasOwnProperty.call(docData, key)) {
+      const value = docData[key];
+      if (value instanceof Timestamp) {
+        serialized[key] = { _seconds: value.seconds, _nanoseconds: value.nanoseconds, __datatype__: 'timestamp' };
+      } else {
+        serialized[key] = value;
+      }
+    }
+  }
+  return serialized;
+};
+
+const deserializeDocument = (docData: Record<string, any>): Record<string, any> => {
+  const deserialized: Record<string, any> = {};
+  for (const key in docData) {
+    if (Object.prototype.hasOwnProperty.call(docData, key)) {
+      const value = docData[key];
+      if (value && typeof value === 'object' && value.__datatype__ === 'timestamp') {
+        deserialized[key] = new Timestamp(value._seconds, value._nanoseconds);
+      } else {
+        deserialized[key] = value;
+      }
+    }
+  }
+  return deserialized;
+};
+
+export const exportFirestoreCollections = async (collectionNames: string[]): Promise<Record<string, any[]>> => {
+  const data: Record<string, any[]> = {};
+  for (const collectionName of collectionNames) {
+    const colRef = collection(db, collectionName);
+    const snapshot = await getDocs(colRef);
+    data[collectionName] = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...serializeDocument(doc.data()),
+    }));
+  }
+  return data;
+};
+
+const deleteAllDocumentsInCollection = async (collectionName: string): Promise<void> => {
+  const colRef = collection(db, collectionName);
+  const snapshot = await getDocs(colRef);
+  if (snapshot.empty) return;
+
+  const batch = writeBatch(db);
+  snapshot.docs.forEach(doc => batch.delete(doc.ref));
+  await batch.commit();
+};
+
+export const importFirestoreCollections = async (
+  dataToImport: Record<string, any[]>,
+  collectionsToRestore: string[]
+): Promise<{ success: boolean; errors: string[]; summary: string[] }> => {
+  const errors: string[] = [];
+  const summary: string[] = [];
+
+  for (const collectionName of collectionsToRestore) {
+    if (!dataToImport[collectionName]) {
+      const msg = `Colección "${collectionName}" no encontrada en el archivo de respaldo. Omitiendo.`;
+      console.warn(msg);
+      summary.push(msg);
+      continue;
+    }
+
+    try {
+      console.log(`[Import] Eliminando datos existentes en la colección: ${collectionName}`);
+      await deleteAllDocumentsInCollection(collectionName);
+      summary.push(`Datos existentes en "${collectionName}" eliminados.`);
+      console.log(`[Import] Datos eliminados de ${collectionName}. Procediendo a importar...`);
+      
+      const batch = writeBatch(db);
+      const collectionData = dataToImport[collectionName];
+      let importedCount = 0;
+
+      for (const docData of collectionData) {
+        const { id, ...restOfData } = docData;
+        if (!id) {
+          console.warn(`[Import] Documento en "${collectionName}" sin ID. Omitiendo.`);
+          continue;
+        }
+        const docRef = doc(db, collectionName, id);
+        batch.set(docRef, deserializeDocument(restOfData));
+        importedCount++;
+      }
+      
+      await batch.commit();
+      summary.push(`${importedCount} documentos importados a "${collectionName}".`);
+      console.log(`[Import] ${importedCount} documentos importados exitosamente a ${collectionName}.`);
+
+    } catch (error: any) {
+      const errorMsg = `Error restaurando la colección "${collectionName}": ${error.message}`;
+      console.error(errorMsg, error);
+      errors.push(errorMsg);
+      summary.push(`Fallo al restaurar "${collectionName}".`);
+    }
+  }
+  return { success: errors.length === 0, errors, summary };
 };

@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import type { Participation, Raffle } from '@/types';
+import type { Participation, Raffle, ActivityLogActionType } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2, CheckCircle, XCircle, Inbox, BadgeEuro, CalendarDays, Ticket, Users, Trash2, AlertTriangle, UserCircle as UserIcon, Phone as PhoneIcon, Hash as HashIcon, Info as InfoIconLucide, Eye } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -23,9 +23,7 @@ import {
   DialogFooter,
   DialogClose
 } from '@/components/ui/dialog';
-import { getParticipations, getRaffles, updateParticipation, deleteParticipation as deleteParticipationFromDB } from '@/lib/firebase/firestoreService';
-
-// Removed NEW_USER_NOTIFICATIONS_LS_KEY constant
+import { getParticipations, getRaffles, updateParticipation, deleteParticipation as deleteParticipationFromDB, addActivityLog } from '@/lib/firebase/firestoreService';
 
 export default function AdminPaymentManager() {
   const [participations, setParticipations] = useState<Participation[]>([]);
@@ -35,6 +33,18 @@ export default function AdminPaymentManager() {
   const { user: currentUser } = useAuth();
   const [selectedProofUrl, setSelectedProofUrl] = useState<string | null>(null);
   const [isProofDialogOpen, setIsProofDialogOpen] = useState(false);
+  const [buttonsInCooldown, setButtonsInCooldown] = useState<Set<string>>(new Set());
+
+  const startCooldown = useCallback((key: string, duration: number = 2000) => {
+    setButtonsInCooldown(prev => new Set(prev).add(key));
+    setTimeout(() => {
+      setButtonsInCooldown(prev => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }, duration);
+  }, []);
 
 
   const fetchAllDataForAdmin = useCallback(async () => {
@@ -81,13 +91,32 @@ export default function AdminPaymentManager() {
   }, [fetchAllDataForAdmin]);
 
   const updateParticipationStatusInDB = async (participation: Participation, newStatus: 'confirmed' | 'rejected') => {
+    const actionKey = `${participation.id}_${newStatus}`;
+    if (buttonsInCooldown.has(actionKey) || !currentUser?.username) return;
+
+    startCooldown(actionKey);
+
     try {
+      const oldStatus = participation.paymentStatus;
       await updateParticipation(participation.id, { paymentStatus: newStatus });
-      console.log('[AdminPaymentManager] Participation status updated in DB for participation ID:', participation.id, 'to status:', newStatus);
       
-      // Removed localStorage notification for user on payment confirmation
+      const logActionType: ActivityLogActionType = newStatus === 'confirmed' ? 'PAYMENT_CONFIRMED' : 'PAYMENT_REJECTED';
+      await addActivityLog({
+        adminUsername: currentUser.username,
+        actionType: logActionType,
+        targetInfo: `Participación ID: ${participation.id} para Rifa: ${participation.raffleName}`,
+        details: { 
+          participationId: participation.id,
+          raffleId: participation.raffleId,
+          raffleName: participation.raffleName,
+          participantName: `${participation.participantName} ${participation.participantLastName}`,
+          numbers: participation.numbers.join(', '),
+          oldStatus,
+          newStatus,
+        }
+      });
       
-      fetchAllDataForAdmin(); // Refresh participations list
+      fetchAllDataForAdmin(); 
       toast({ title: `Pago ${newStatus === 'confirmed' ? 'Confirmado' : 'Rechazado'}`, description: `El estado del pago ha sido actualizado.` });
     } catch (error) {
       console.error("Error updating participation status in Firestore:", error);
@@ -96,8 +125,31 @@ export default function AdminPaymentManager() {
   };
 
   const handleDeleteParticipationConfirm = async (participationId: string) => {
+    const deleteKey = `${participationId}_delete`;
+    if (buttonsInCooldown.has(deleteKey) || !currentUser?.username) return;
+    
+    startCooldown(deleteKey);
+
     try {
+      const participationToDelete = participations.find(p => p.id === participationId);
       await deleteParticipationFromDB(participationId);
+
+      if (participationToDelete) {
+        await addActivityLog({
+            adminUsername: currentUser.username,
+            actionType: 'PARTICIPATION_DELETED',
+            targetInfo: `Participación ID: ${participationId} de Rifa: ${participationToDelete.raffleName}`,
+            details: { 
+                participationId: participationToDelete.id,
+                raffleId: participationToDelete.raffleId,
+                raffleName: participationToDelete.raffleName,
+                participantName: `${participationToDelete.participantName} ${participationToDelete.participantLastName}`,
+                numbers: participationToDelete.numbers.join(', '),
+                statusWhenDeleted: participationToDelete.paymentStatus,
+            }
+        });
+      }
+
       fetchAllDataForAdmin();
       toast({ title: "Participación Eliminada", description: "El registro de participación ha sido eliminado." });
     } catch (error) {
@@ -131,7 +183,10 @@ export default function AdminPaymentManager() {
   const renderParticipationDetails = (p: Participation, showActions: boolean = true) => {
     const raffle = allRafflesMap[p.raffleId];
     const creatorUsername = getRaffleCreatorUsername(p.raffleId);
-    // const totalAmount = p.numbers.length * (raffle?.pricePerTicket || 0); // Not used directly in render
+
+    const confirmKey = `${p.id}_confirmed`;
+    const rejectKey = `${p.id}_rejected`;
+    const deleteKey = `${p.id}_delete`;
 
     return (
       <div className="flex flex-col md:flex-row justify-between md:items-start gap-3">
@@ -149,20 +204,32 @@ export default function AdminPaymentManager() {
           {p.paymentNotes && (
             <p className="text-xs italic text-muted-foreground mt-1">Notas del pago: {p.paymentNotes}</p>
           )}
-          {/* Comprobante de pago eliminado de esta vista por ahora */}
         </div>
         {showActions && (
         <div className="mt-3 md:mt-0 md:ml-4 flex items-center sm:items-start gap-2 flex-shrink-0">
-          <Button size="icon" className="bg-green-600 hover:bg-green-700 text-white h-8 w-8" onClick={() => updateParticipationStatusInDB(p, 'confirmed')} title="Confirmar Pago">
-            <CheckCircle className="h-4 w-4"/>
+          <Button 
+            size="icon" 
+            className="bg-green-600 hover:bg-green-700 text-white h-8 w-8" 
+            onClick={() => updateParticipationStatusInDB(p, 'confirmed')} 
+            title="Confirmar Pago"
+            disabled={buttonsInCooldown.has(confirmKey)}
+          >
+            {buttonsInCooldown.has(confirmKey) ? <Loader2 className="h-4 w-4 animate-spin"/> : <CheckCircle className="h-4 w-4"/>}
           </Button>
-          <Button size="icon" variant="destructive" className="h-8 w-8" onClick={() => updateParticipationStatusInDB(p, 'rejected')} title="Rechazar Pago">
-            <XCircle className="h-4 w-4"/>
+          <Button 
+            size="icon" 
+            variant="destructive" 
+            className="h-8 w-8" 
+            onClick={() => updateParticipationStatusInDB(p, 'rejected')} 
+            title="Rechazar Pago"
+            disabled={buttonsInCooldown.has(rejectKey)}
+          >
+            {buttonsInCooldown.has(rejectKey) ? <Loader2 className="h-4 w-4 animate-spin"/> : <XCircle className="h-4 w-4"/>}
           </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="outline" size="icon" className="h-8 w-8" title="Eliminar Registro">
-                <Trash2 className="h-4 w-4"/>
+              <Button variant="outline" size="icon" className="h-8 w-8" title="Eliminar Registro" disabled={buttonsInCooldown.has(deleteKey)}>
+                {buttonsInCooldown.has(deleteKey) ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4"/>}
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
@@ -174,7 +241,11 @@ export default function AdminPaymentManager() {
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel className="text-xs h-8">Cancelar</AlertDialogCancel>
-                <AlertDialogAction onClick={() => handleDeleteParticipationConfirm(p.id)} className="bg-destructive hover:bg-destructive/90 text-xs h-8">Sí, Eliminar Registro</AlertDialogAction>
+                <AlertDialogAction 
+                  onClick={() => handleDeleteParticipationConfirm(p.id)} 
+                  className="bg-destructive hover:bg-destructive/90 text-xs h-8"
+                  disabled={buttonsInCooldown.has(deleteKey)}
+                >Sí, Eliminar Registro</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -227,39 +298,46 @@ export default function AdminPaymentManager() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2 sm:space-y-3">
-            {processedParticipations.map(p => (
-               <Card key={p.id} className={`p-3 sm:p-4 border-l-4 ${p.paymentStatus === 'confirmed' ? 'border-green-500 bg-green-500/5' : 'border-red-500 bg-red-500/5'}`}>
-                <div className="flex flex-col md:flex-row justify-between md:items-start">
-                  {renderParticipationDetails(p, false)} {/* No actions for processed */}
-                  <div className="mt-3 md:mt-0 md:ml-4 flex items-center gap-2 flex-shrink-0">
-                    {p.paymentStatus === 'confirmed' ? (
-                      <CheckCircle className="h-5 w-5 text-green-600" title="Confirmado" />
-                    ) : (
-                      <XCircle className="h-5 w-5 text-red-600" title="Rechazado" />
-                    )}
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="outline" size="icon" className="h-7 w-7" title="Eliminar Registro">
-                          <Trash2 className="h-3.5 w-3.5"/>
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                         <AlertDialogHeader>
-                            <AlertDialogTitle className="flex items-center"><AlertTriangle className="text-destructive mr-2"/>¿Eliminar este registro procesado?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Vas a eliminar el registro de {p.participantName} ({p.paymentStatus}) para la rifa "{allRafflesMap[p.raffleId]?.name || 'Desconocida'}". Esto es permanente.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel className="text-xs h-8">Cancelar</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDeleteParticipationConfirm(p.id)} className="bg-destructive hover:bg-destructive/90 text-xs h-8">Sí, Eliminar</AlertDialogAction>
-                          </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+            {processedParticipations.map(p => {
+               const deleteKeyProcessed = `${p.id}_delete_processed`;
+               return (
+                <Card key={p.id} className={`p-3 sm:p-4 border-l-4 ${p.paymentStatus === 'confirmed' ? 'border-green-500 bg-green-500/5' : 'border-red-500 bg-red-500/5'}`}>
+                  <div className="flex flex-col md:flex-row justify-between md:items-start">
+                    {renderParticipationDetails(p, false)} {/* No actions for processed */}
+                    <div className="mt-3 md:mt-0 md:ml-4 flex items-center gap-2 flex-shrink-0">
+                      {p.paymentStatus === 'confirmed' ? (
+                        <CheckCircle className="h-5 w-5 text-green-600" title="Confirmado" />
+                      ) : (
+                        <XCircle className="h-5 w-5 text-red-600" title="Rechazado" />
+                      )}
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="outline" size="icon" className="h-7 w-7" title="Eliminar Registro" disabled={buttonsInCooldown.has(deleteKeyProcessed)}>
+                            {buttonsInCooldown.has(deleteKeyProcessed) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5"/>}
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                           <AlertDialogHeader>
+                              <AlertDialogTitle className="flex items-center"><AlertTriangle className="text-destructive mr-2"/>¿Eliminar este registro procesado?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Vas a eliminar el registro de {p.participantName} ({p.paymentStatus}) para la rifa "{allRafflesMap[p.raffleId]?.name || 'Desconocida'}". Esto es permanente.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel className="text-xs h-8">Cancelar</AlertDialogCancel>
+                              <AlertDialogAction 
+                                onClick={() => handleDeleteParticipationConfirm(p.id)} 
+                                className="bg-destructive hover:bg-destructive/90 text-xs h-8"
+                                disabled={buttonsInCooldown.has(deleteKeyProcessed)} 
+                              >Sí, Eliminar</AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
                   </div>
-                </div>
-              </Card>
-            ))}
+                </Card>
+               );
+            })}
           </CardContent>
         </Card>
       )}
@@ -270,8 +348,6 @@ export default function AdminPaymentManager() {
             <p className="text-sm text-muted-foreground mt-1">Cuando los usuarios participen en las rifas que creaste, aparecerán aquí para su gestión.</p>
         </div>
        )}
-      {/* Dialogo para comprobante de pago eliminado */}
     </div>
   );
 }
-

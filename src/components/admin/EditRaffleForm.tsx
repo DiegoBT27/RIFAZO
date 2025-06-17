@@ -44,7 +44,7 @@ import { Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { updateRaffle } from '@/lib/firebase/firestoreService';
+import { updateRaffle, addActivityLog } from '@/lib/firebase/firestoreService';
 
 const todayAtMidnight = new Date();
 todayAtMidnight.setHours(0, 0, 0, 0);
@@ -114,32 +114,8 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
   const [imagePreview, setImagePreview] = useState<string | null>(raffle?.image || null);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const formPrefix = 'edit-'; 
+  const [initialFormState, setInitialFormState] = useState<EditRaffleFormValues | null>(null);
 
-  const { register, handleSubmit, control, reset, setValue, watch, formState: { errors } } = useForm<EditRaffleFormValues>({
-    resolver: zodResolver(editRaffleFormSchema),
-    defaultValues: {
-      id: raffle?.id || '',
-      name: raffle?.name || '',
-      description: raffle?.description || '',
-      image: raffle?.image || '',
-      prize: raffle?.prize || '',
-      pricePerTicket: raffle?.pricePerTicket || 1,
-      totalNumbers: raffle?.totalNumbers || 100,
-      drawDate: raffle?.drawDate ? parse(raffle.drawDate, 'yyyy-MM-dd', new Date()) : todayAtMidnight,
-      lotteryName: raffle?.lotteryName || null,
-      drawTime: raffle?.drawTime || 'unspecified_time',
-      selectedPaymentMethodIds: raffle?.acceptedPaymentMethods?.map(pm => pm.id) || [],
-      paymentMethodDetails: {
-        pagoMovil_ci: '',
-        pagoMovil_phone: '',
-        pagoMovil_bank: '',
-        zinli_details: '',
-        otro_description: '',
-      }
-    }
-  });
-
-  const selectedPaymentMethodIds = watch("selectedPaymentMethodIds");
 
   const parseInitialPaymentDetails = useCallback((acceptedMethods: AcceptedPaymentMethod[] | undefined) => {
     const details = {
@@ -165,9 +141,27 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
   }, []);
 
 
+  const { register, handleSubmit, control, reset, setValue, watch, getValues, formState: { errors } } = useForm<EditRaffleFormValues>({
+    resolver: zodResolver(editRaffleFormSchema),
+    defaultValues: { // These will be overridden by useEffect, but good practice to set structure
+      id: raffle?.id || '',
+      name: raffle?.name || '',
+      description: raffle?.description || '',
+      image: raffle?.image || '',
+      prize: raffle?.prize || '',
+      pricePerTicket: raffle?.pricePerTicket || 1,
+      totalNumbers: raffle?.totalNumbers || 100,
+      drawDate: raffle?.drawDate ? parse(raffle.drawDate, 'yyyy-MM-dd', new Date()) : todayAtMidnight,
+      lotteryName: raffle?.lotteryName || null,
+      drawTime: raffle?.drawTime || 'unspecified_time',
+      selectedPaymentMethodIds: raffle?.acceptedPaymentMethods?.map(pm => pm.id) || [],
+      paymentMethodDetails: parseInitialPaymentDetails(raffle?.acceptedPaymentMethods)
+    }
+  });
+  
   useEffect(() => {
     if (raffle) {
-      reset({
+      const initialData: EditRaffleFormValues = {
         id: raffle.id,
         name: raffle.name,
         description: raffle.description,
@@ -180,10 +174,15 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
         drawTime: raffle.drawTime || 'unspecified_time',
         selectedPaymentMethodIds: raffle.acceptedPaymentMethods?.map(pm => pm.id) || [],
         paymentMethodDetails: parseInitialPaymentDetails(raffle.acceptedPaymentMethods),
-      });
+      };
+      reset(initialData);
+      setInitialFormState(initialData);
       setImagePreview(raffle.image);
     }
   }, [raffle, reset, parseInitialPaymentDetails]);
+
+
+  const selectedPaymentMethodIds = watch("selectedPaymentMethodIds");
 
   const handleImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -209,6 +208,11 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
 
   const onSubmit: SubmitHandler<EditRaffleFormValues> = async (data) => {
     setIsLoading(true);
+    if (!currentUser?.username || !initialFormState) {
+      toast({ title: "Error de Autenticación o Estado Inicial", description: "No se pudo identificar al usuario o el estado inicial de la rifa.", variant: "destructive" });
+      setIsLoading(false);
+      return;
+    }
 
     const acceptedPaymentMethodsResult: AcceptedPaymentMethod[] = data.selectedPaymentMethodIds
       .map(id => {
@@ -247,20 +251,65 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
       drawTime: (data.drawTime && data.drawTime !== 'unspecified_time') ? data.drawTime : null,
       acceptedPaymentMethods: acceptedPaymentMethodsResult,
     };
+    
+    const actualUpdatedFields: string[] = [];
+    (Object.keys(raffleDataForDb) as Array<keyof typeof raffleDataForDb>).forEach(key => {
+        if (key === 'drawDate') {
+            if (format(data.drawDate, 'yyyy-MM-dd') !== format(initialFormState.drawDate, 'yyyy-MM-dd')) {
+                actualUpdatedFields.push(key);
+            }
+        } else if (key === 'acceptedPaymentMethods') {
+            const initialIds = initialFormState.selectedPaymentMethodIds.slice().sort();
+            const currentIds = data.selectedPaymentMethodIds.slice().sort();
+            const initialDetails = JSON.stringify(initialFormState.paymentMethodDetails);
+            const currentDetails = JSON.stringify(data.paymentMethodDetails);
+
+            if (JSON.stringify(initialIds) !== JSON.stringify(currentIds) || initialDetails !== currentDetails) {
+                actualUpdatedFields.push(key);
+            }
+        } else if (String(raffleDataForDb[key]) !== String(initialFormState[key as keyof EditRaffleFormValues])) {
+             if (initialFormState[key as keyof EditRaffleFormValues] !== undefined || raffleDataForDb[key] !== undefined) { // Avoid logging if both were undefined/null
+                 actualUpdatedFields.push(key);
+             }
+        }
+    });
+    
+    if (data.image !== initialFormState.image) { // Specifically check image as it's a string but potentially large
+      if (!actualUpdatedFields.includes('image')) actualUpdatedFields.push('image');
+    }
+
 
     try {
-      await updateRaffle(data.id, raffleDataForDb);
-      toast({
-        title: "Rifa Actualizada",
-        description: `La rifa "${data.name}" ha sido guardada exitosamente.`,
-      });
+      if (actualUpdatedFields.length > 0) {
+        await updateRaffle(data.id, raffleDataForDb);
+        await addActivityLog({
+          adminUsername: currentUser.username,
+          actionType: 'RAFFLE_EDITED',
+          targetInfo: `Rifa: ${data.name}`,
+          details: { 
+            raffleId: data.id, 
+            raffleName: data.name,
+            updatedFields: actualUpdatedFields, 
+          }
+        });
+        toast({
+          title: "Rifa Actualizada",
+          description: `La rifa "${data.name}" ha sido guardada exitosamente.`,
+        });
+      } else {
+         toast({
+          title: "Sin Cambios",
+          description: "No se detectaron cambios en la rifa.",
+        });
+      }
+
 
       const updatedRaffleData: Raffle = {
-        ...raffle,
-        ...raffleDataForDb,
-        id: data.id,
-        creatorUsername: raffle.creatorUsername,
-        soldNumbers: raffle.soldNumbers,
+        ...raffle, // original raffle data
+        ...raffleDataForDb, // applied updates
+        id: data.id, // ensure id is correct
+        creatorUsername: raffle.creatorUsername, // ensure original creator is kept
+        soldNumbers: raffle.soldNumbers, // ensure original soldNumbers are kept
         lotteryName: raffleDataForDb.lotteryName,
         drawTime: raffleDataForDb.drawTime,
         acceptedPaymentMethods: acceptedPaymentMethodsResult,
@@ -542,5 +591,3 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
     </div>
   );
 }
-
-    

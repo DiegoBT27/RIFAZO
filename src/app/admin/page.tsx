@@ -8,7 +8,7 @@ import Link from 'next/link';
 import SectionTitle from '@/components/shared/SectionTitle';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Settings, Loader2, Users, PackageCheck } from 'lucide-react';
+import { Settings, Loader2, Users, PackageCheck, ListCollapse, DatabaseZap } from 'lucide-react'; 
 
 export default function AdminDashboardPage() {
   const { user, isLoggedIn, isLoading: authIsLoading } = useAuth();
@@ -88,6 +88,49 @@ export default function AdminDashboardPage() {
         )}
 
         {isFounder && (
+          <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
+            <CardHeader>
+              <CardTitle className="font-headline text-xl flex items-center text-primary">
+                <ListCollapse className="mr-2 h-6 w-6" />
+                Registros de Actividad
+              </CardTitle>
+              <CardDescription>
+                 Visualiza las acciones realizadas por los administradores en la plataforma.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/admin/activity-logs" className="block w-full">
+                <Button className="w-full">
+                  Ver Registros
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        {isFounder && (
+          <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
+            <CardHeader>
+              <CardTitle className="font-headline text-xl flex items-center text-primary">
+                <DatabaseZap className="mr-2 h-6 w-6" />
+                Copia de Seguridad
+              </CardTitle>
+              <CardDescription>
+                Crea y restaura copias de seguridad de los datos de la aplicación.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/admin/backup-restore" className="block w-full">
+                <Button className="w-full">
+                  Gestionar Copias
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+
+        {isFounder && (
           <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 md:col-span-1 lg:col-span-1">
             <CardHeader>
               <CardTitle className="font-headline text-xl flex items-center text-foreground">
@@ -109,4 +152,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-

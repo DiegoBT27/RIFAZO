@@ -7,7 +7,7 @@ import dynamic from 'next/dynamic';
 import { useAuth } from '@/contexts/AuthContext';
 import RaffleCard from '@/components/raffles/RaffleCard';
 import SectionTitle from '@/components/shared/SectionTitle';
-import type { Raffle, Participation, ManagedUser } from '@/types';
+import type { Raffle, ManagedUser } from '@/types';
 import { Loader2, Inbox, PlusCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -194,7 +194,7 @@ export default function HomePage() {
       )}
       
       {currentRaffles.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+        <div className="flex flex-col items-center gap-4 sm:gap-6 md:grid md:grid-cols-2 lg:grid-cols-3">
           {currentRaffles.map((raffle) => {
             const creatorProfile = raffle.creatorUsername ? creatorProfiles[raffle.creatorUsername] : undefined;
             return (

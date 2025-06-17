@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Loader2, ListChecks, Edit, AlertCircle, Inbox, PackagePlus, Trash2, Trophy, CalendarCheck2, AlertTriangle, Phone } from 'lucide-react';
 import type { Raffle } from '@/types';
-import { getRaffles, deleteRaffleAndParticipations } from '@/lib/firebase/firestoreService';
+import { getRaffles, deleteRaffleAndParticipations, addActivityLog, getRaffleById } from '@/lib/firebase/firestoreService';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -94,8 +94,23 @@ export default function MyRafflesPage() {
   }, [authIsLoading, isLoggedIn, fetchMyRaffles]);
 
   const handleDeleteRaffleConfirm = async (raffleId: string) => {
+    if (!user?.username) {
+        toast({ title: "Error", description: "No se pudo identificar al usuario.", variant: "destructive" });
+        return;
+    }
     try {
+      const raffleToDelete = await getRaffleById(raffleId); 
       await deleteRaffleAndParticipations(raffleId);
+      
+      if (raffleToDelete) {
+        await addActivityLog({
+            adminUsername: user.username,
+            actionType: 'RAFFLE_DELETED',
+            targetInfo: `Rifa ID: ${raffleId}, Nombre: ${raffleToDelete.name}`,
+            details: { raffleId: raffleId, raffleName: raffleToDelete.name, creatorUsername: raffleToDelete.creatorUsername, prize: raffleToDelete.prize }
+        });
+      }
+
       toast({ title: "Rifa Eliminada", description: "La rifa y todos sus datos asociados han sido eliminados." });
       fetchMyRaffles(); 
     } catch (error) {
@@ -156,7 +171,7 @@ export default function MyRafflesPage() {
       </SectionTitle>
       
       <div className="mb-6 flex justify-end">
-        <Button asChild>
+        <Button asChild className="bg-accent hover:bg-accent/90 text-accent-foreground">
           <Link href="/admin/create-raffle">
             <PackagePlus className="mr-2 h-5 w-5" /> Crear Nueva Rifa
           </Link>
@@ -174,7 +189,7 @@ export default function MyRafflesPage() {
             const canRegisterWinner = (drawDateHasPassed || raffle.status === 'pending_draw') && raffle.status !== 'completed' && raffle.status !== 'cancelled';
             const canEditRaffle = raffle.status !== 'completed' && raffle.status !== 'cancelled';
             const canDeleteRaffle = 
-              (user?.role === 'founder') || // Founder can delete any raffle
+              (user?.role === 'founder') || 
               (user?.role === 'admin' && raffle.creatorUsername === user?.username && raffle.status !== 'completed' && raffle.status !== 'cancelled');
 
 
@@ -290,4 +305,3 @@ export default function MyRafflesPage() {
     </div>
   );
 }
-

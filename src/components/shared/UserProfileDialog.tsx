@@ -55,7 +55,8 @@ export default function UserProfileDialog({ userProfile, isOpen, onOpenChange }:
         <DialogHeader className="text-center sm:text-left mb-2">
           <div className="flex flex-col items-center sm:flex-row sm:items-start gap-4 mb-3">
             <Avatar className="h-20 w-20 sm:h-24 sm:w-24 text-2xl sm:text-3xl border-2 border-primary">
-              <AvatarImage src={'https://placehold.co/128x128.png'} alt={displayName || userProfile.username} data-ai-hint="profile avatar placeholder" />
+              {/* AvatarImage src removed to always show fallback */}
+              <AvatarImage alt={displayName || userProfile.username} data-ai-hint="profile avatar" />
               <AvatarFallback>{getInitials()}</AvatarFallback>
             </Avatar>
             <div className="mt-2 sm:mt-0 text-center sm:text-left">
@@ -117,5 +118,3 @@ export default function UserProfileDialog({ userProfile, isOpen, onOpenChange }:
     </Dialog>
   );
 }
-
-    

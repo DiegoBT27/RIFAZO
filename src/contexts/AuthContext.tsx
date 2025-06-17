@@ -11,13 +11,19 @@ import { getUsers, getUserByUsername, addUser } from '@/lib/firebase/firestoreSe
 interface User {
   username: string;
   role: 'admin' | 'user' | 'founder' | null;
+  isBlocked?: boolean; // Añadido para consistencia, aunque el objeto User principal no lo usa tanto como ManagedUser
+}
+
+interface LoginResult {
+  success: boolean;
+  reason?: 'blocked' | 'credentials_invalid';
 }
 
 interface AuthContextType {
   user: User | null;
   isLoggedIn: boolean;
-  isLoading: boolean; // This is specifically for the auth process itself
-  login: (usernameInput: string, passwordInput: string) => Promise<boolean>;
+  isLoading: boolean; 
+  login: (usernameInput: string, passwordInput: string) => Promise<LoginResult>;
   logout: () => void;
 }
 
@@ -26,7 +32,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
-  const [isLoading, setIsLoading] = useState<boolean>(true); // Auth loading state
+  const [isLoading, setIsLoading] = useState<boolean>(true); 
   const router = useRouter();
 
   useEffect(() => {
@@ -49,7 +55,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             const userExists = await getUserByUsername(userData.username);
             if (!userExists) {
               console.log(`[AuthContext] Seeding user: ${userData.username}`);
-              await addUser(userData);
+              await addUser({...userData, isBlocked: false }); // Asegurar que isBlocked se setea
             } else {
               console.log(`[AuthContext] User ${userData.username} already exists in Firestore, skipping seed.`);
             }
@@ -66,10 +72,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const dbUser = await getUserByUsername(parsedUser.username);
           console.log(`[AuthContext] Firestore user data for '${parsedUser.username}':`, dbUser);
           
-          if (dbUser && dbUser.role === parsedUser.role) { // Validate role consistency
-            currentUserState = { username: dbUser.username, role: dbUser.role };
-            isAuthenticated = true;
-            console.log(`[AuthContext] User '${currentUserState.username}' (Role: ${currentUserState.role}) verified. Session is valid.`);
+          if (dbUser && dbUser.role === parsedUser.role) { // Validar rol
+            if (dbUser.isBlocked === true) {
+              console.warn(`[AuthContext] User '${parsedUser.username}' is blocked. Clearing session.`);
+              localStorage.removeItem('currentUser');
+            } else {
+              currentUserState = { username: dbUser.username, role: dbUser.role, isBlocked: dbUser.isBlocked };
+              isAuthenticated = true;
+              console.log(`[AuthContext] User '${currentUserState.username}' (Role: ${currentUserState.role}, Blocked: ${currentUserState.isBlocked}) verified. Session is valid.`);
+            }
           } else {
             console.warn(`[AuthContext] User '${parsedUser.username}' from localStorage is stale or role mismatch with Firestore. DB role: ${dbUser?.role}, LS role: ${parsedUser.role}. Clearing session.`);
             localStorage.removeItem('currentUser');
@@ -79,9 +90,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       } catch (error) {
         console.error("[AuthContext] CRITICAL ERROR during initial auth setup or user loading:", error);
-        // Ensure localStorage is cleared on any error during this critical phase
         localStorage.removeItem('currentUser');
-        // State will be updated in finally
       } finally {
         setUser(currentUserState);
         setIsLoggedIn(isAuthenticated);
@@ -90,41 +99,40 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     };
     initializeAuth();
-  }, []); // Empty dependency array ensures this runs once on mount
+  }, []); 
 
-  const login = async (usernameInput: string, passwordInput: string): Promise<boolean> => {
+  const login = async (usernameInput: string, passwordInput: string): Promise<LoginResult> => {
     console.log(`[AuthContext] Attempting login for user: ${usernameInput}`);
-    // setIsLoading(true); // Not strictly needed here as login page handles its own loading state
     try {
       const dbUser = await getUserByUsername(usernameInput);
       console.log(`[AuthContext] User data from Firestore for login attempt of '${usernameInput}':`, dbUser);
 
       if (dbUser && dbUser.password === passwordInput) {
-        const userData: User = { username: dbUser.username, role: dbUser.role };
+        if (dbUser.isBlocked === true) {
+          console.warn(`[AuthContext] Login attempt for blocked user: ${usernameInput}.`);
+          return { success: false, reason: 'blocked' };
+        }
+
+        const userData: User = { username: dbUser.username, role: dbUser.role, isBlocked: dbUser.isBlocked };
         localStorage.setItem('currentUser', JSON.stringify(userData));
         setUser(userData);
         setIsLoggedIn(true);
-        // setIsLoading(false);
         console.log(`[AuthContext] Login successful for ${usernameInput}. Role: ${userData.role}. Redirecting...`);
         if (userData.role === 'admin' || userData.role === 'founder') {
           router.push('/admin');
         } else {
           router.push('/');
         }
-        return true;
+        return { success: true };
       } else {
          console.warn(`[AuthContext] Login failed for ${usernameInput}. User not found or password incorrect.`);
+         return { success: false, reason: 'credentials_invalid' };
       }
     } catch (error) {
       console.error("[AuthContext] Error during login:", error);
     }
     
-    // Ensure states are cleared if login fails
-    localStorage.removeItem('currentUser');
-    setUser(null);
-    setIsLoggedIn(false);
-    // setIsLoading(false);
-    return false;
+    return { success: false, reason: 'credentials_invalid' }; // Fallback
   };
 
   const logout = () => {
@@ -132,7 +140,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem('currentUser');
     setUser(null);
     setIsLoggedIn(false);
-    router.push('/login'); // Ensure redirection to login page
+    router.push('/login'); 
   };
 
   return (

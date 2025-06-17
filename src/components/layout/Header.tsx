@@ -2,9 +2,9 @@
 'use client';
 
 import Link from 'next/link';
-import React, { useState, useEffect, useCallback } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
-import { Ticket, Trophy, Sparkles, Menu as MenuIcon, LayoutDashboard, LogOut, ShieldCheck, Headset, LogIn, UserCircle, Home, Info, MonitorSmartphone, PackageCheck as PackageCheckIcon, ListChecks, UserPlus } from 'lucide-react';
+import React, { useState } from 'react'; 
+import { usePathname } from 'next/navigation'; 
+import { Ticket, Trophy, Menu as MenuIcon, LayoutDashboard, LogOut, ShieldCheck, Headset, LogIn, UserCircle, ListChecks, UserPlus, PackageCheck as PackageCheckIcon, Sparkles } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -34,7 +34,9 @@ export default function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { user, isLoggedIn, logout, isLoading } = useAuth();
   const pathname = usePathname();
-  const router = useRouter();
+  // const router = useRouter(); 
+
+  if (isLoading) return null;
 
 
   const baseNavItems = [];
@@ -43,10 +45,8 @@ export default function Header() {
 
   const userSpecificNavItems = [];
   if (isLoggedIn && user) {
-    // "Mis Boletos" is visible for all logged-in users
-    userSpecificNavItems.push({ href: "/my-participations", label: "Mis Boletos", icon: <MonitorSmartphone /> });
+    userSpecificNavItems.push({ href: "/my-participations", label: "Mis Boletos", icon: <Ticket /> }); 
 
-    // Admin/Founder specific items
     if (user.role === 'admin' || user.role === 'founder') {
       userSpecificNavItems.push({ href: "/admin/my-raffles", label: "Mis Rifas", icon: <ListChecks /> });
       userSpecificNavItems.push({ href: "/admin/payment-confirmation", label: "Confirmar Pagos", icon: <PackageCheckIcon /> });
@@ -82,7 +82,7 @@ export default function Header() {
     <header className="bg-card text-card-foreground shadow-md border-b sticky top-0 z-50">
       <div className="container mx-auto px-4 py-3 flex items-center justify-between">
         <Link href="/" className="text-xl sm:text-2xl font-headline font-bold flex items-center text-primary" onClick={() => setIsMobileMenuOpen(false)}>
-          <Sparkles className="mr-2 h-5 sm:h-6 w-5 sm:h-6 text-accent animate-pulse-slight" />
+           <Sparkles className="mr-2 h-5 sm:h-6 w-5 sm:h-6 text-accent animate-pulse-slight" />
           RIFAZO
         </Link>
 
@@ -154,7 +154,7 @@ export default function Header() {
                  <SheetTitle className="text-left">
                   <SheetClose asChild>
                     <Link href="/" className="text-xl sm:text-2xl font-headline font-bold flex items-center text-primary" onClick={() => setIsMobileMenuOpen(false)}>
-                      <Sparkles className="mr-2 h-5 sm:h-6 w-5 sm:h-6 text-accent" />
+                       <Sparkles className="mr-2 h-5 sm:h-6 w-5 sm:h-6 text-accent animate-pulse-slight" />
                       RIFAZO
                     </Link>
                   </SheetClose>

@@ -19,8 +19,10 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { Loader2, UserPlus, Trash2, Users, AlertCircle, KeyRound, Edit3, UserCog, Info, Building } from 'lucide-react';
+import { Loader2, UserPlus, Trash2, Users, AlertCircle, KeyRound, Edit3, UserCog, Info, Building, UserX, UserCheck, ShieldAlert } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+// Switch ya no se necesita aquí para el formulario de edición
+import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,16 +45,18 @@ import {
 } from '@/components/ui/dialog';
 import type { ManagedUser } from '@/types';
 import { ScrollArea } from '../ui/scroll-area';
-import { getUsers, addUser, updateUser, deleteUser, getUserByUsername } from '@/lib/firebase/firestoreService';
+import { getUsers, addUser, updateUser, deleteUser, getUserByUsername, addActivityLog } from '@/lib/firebase/firestoreService';
+import { cn } from '@/lib/utils';
 
-const whatsappRegex = /^\+?[1-9]\d{7,14}$/; // Regex para validar números de WhatsApp (simplificada)
+
+const whatsappRegex = /^\+?[1-9]\d{7,14}$/; 
 
 const baseProfileSchema = {
   publicAlias: z.string().optional(),
   whatsappNumber: z.string()
     .optional()
-    .or(z.literal('')) // Permite que sea una cadena vacía si es opcional
-    .refine(val => !val || whatsappRegex.test(val), { // Valida solo si no está vacío
+    .or(z.literal('')) 
+    .refine(val => !val || whatsappRegex.test(val), { 
       message: "Número de WhatsApp inválido. Ej: +584141234567 o 04141234567",
     }),
   locationState: z.string().optional(),
@@ -67,6 +71,7 @@ const userFormSchema = z.object({
   password: z.string().min(6, { message: "La contraseña debe tener al menos 6 caracteres." }),
   confirmPassword: z.string().min(6, { message: "La confirmación debe tener al menos 6 caracteres." }),
   role: z.enum(['user', 'admin', 'founder'], { required_error: "El rol es obligatorio." }),
+  isBlocked: z.boolean().optional().default(false), // Se mantiene para la creación
   organizerType: z.enum(['individual', 'company']).optional(),
   fullName: z.string().optional(),
   companyName: z.string().optional(),
@@ -125,6 +130,7 @@ const editUserFormSchema = z.object({
   password: z.string().optional(),
   confirmPassword: z.string().optional(),
   role: z.enum(['user', 'admin', 'founder'], { required_error: "El rol es obligatorio." }),
+  // isBlocked ya no se gestiona aquí
   organizerType: z.enum(['individual', 'company']).optional(),
   fullName: z.string().optional(),
   companyName: z.string().optional(),
@@ -205,6 +211,7 @@ export default function UserManagementClient() {
         password: '',
         confirmPassword: '',
         role: undefined, 
+        isBlocked: false,
         organizerType: undefined, 
         fullName: '',
         companyName: '',
@@ -236,6 +243,7 @@ export default function UserManagementClient() {
 
   const selectedRoleForEdit = watchEdit('role');
   const selectedOrganizerTypeForEdit = watchEdit('organizerType');
+  // isBlockedForEdit ya no se necesita
 
   const fetchUsersFromDB = useCallback(async () => {
     setIsLoading(true);
@@ -370,6 +378,11 @@ export default function UserManagementClient() {
 
   const onSubmit: SubmitHandler<UserFormValues> = async (data) => {
     setIsSubmitting(true);
+    if (!currentUser?.username) {
+      toast({ title: "Error de Autenticación", description: "No se pudo identificar al usuario que realiza la acción.", variant: "destructive" });
+      setIsSubmitting(false);
+      return;
+    }
     try {
       const existingUser = await getUserByUsername(data.username);
       if (existingUser) {
@@ -384,6 +397,7 @@ export default function UserManagementClient() {
         username: userDataForDb.username!,
         password: userDataForDb.password!,
         role: userDataForDb.role!,
+        isBlocked: userDataForDb.isBlocked || false,
         organizerType: userDataForDb.role === 'user' ? undefined : userDataForDb.organizerType,
         fullName: userDataForDb.role === 'user' ? undefined : (userDataForDb.organizerType === 'individual' ? userDataForDb.fullName : undefined),
         companyName: userDataForDb.role === 'user' ? undefined : (userDataForDb.organizerType === 'company' ? userDataForDb.companyName : undefined),
@@ -397,12 +411,19 @@ export default function UserManagementClient() {
         adminPaymentMethodsInfo: userDataForDb.role === 'user' ? undefined : userDataForDb.adminPaymentMethodsInfo,
       };
 
+      const savedUser = await addUser(newUserData);
+      await addActivityLog({
+        adminUsername: currentUser.username,
+        actionType: 'USER_CREATED',
+        targetInfo: `Usuario: ${savedUser.username}`,
+        details: { userId: savedUser.id, username: savedUser.username, role: savedUser.role }
+      });
 
-      await addUser(newUserData);
       fetchUsersFromDB();
       toast({ title: "Usuario Creado", description: `El usuario "${data.username}" ha sido añadido.` });
       reset(); 
       setValue('role', undefined); 
+      setValue('isBlocked', false);
       setValue('organizerType', undefined); 
     } catch (error) {
       console.error("Error creating user:", error);
@@ -414,7 +435,11 @@ export default function UserManagementClient() {
 
   const onEditSubmit: SubmitHandler<EditUserFormValues> = async (data) => {
     setIsEditSubmitting(true);
-    if (!editingUser) return;
+    if (!editingUser || !currentUser?.username) {
+      toast({ title: "Error", description: "No se pudo identificar el usuario a editar o el administrador actual.", variant: "destructive" });
+      setIsEditSubmitting(false);
+      return;
+    }
 
     if (editingUser.username === 'fundador' && data.role !== 'founder') {
         toast({ title: "Acción no permitida", description: "El rol del usuario 'fundador' no puede ser cambiado.", variant: "destructive" });
@@ -434,34 +459,78 @@ export default function UserManagementClient() {
           return;
         }
       }
+      
+      const actualUpdatedFields: string[] = [];
+      const userDataToUpdate: Partial<ManagedUser> = { id: data.id };
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { id, confirmPassword, ...userDataToUpdate } = data;
-      if (userDataToUpdate.password === '' || userDataToUpdate.password === undefined) {
-        delete userDataToUpdate.password;
-      }
+      (Object.keys(data) as Array<keyof EditUserFormValues>).forEach(key => {
+        if (key === 'id' || key === 'confirmPassword') return;
 
-      if(userDataToUpdate.role === 'user') {
-        delete userDataToUpdate.organizerType;
-        delete userDataToUpdate.fullName;
-        delete userDataToUpdate.companyName;
-        delete userDataToUpdate.rif;
+        const newValue = data[key];
+        const oldValue = editingUser[key as keyof ManagedUser];
+
+        let valueChanged = false;
+        if (key === 'password') {
+            if (newValue && newValue.length > 0) { // Password is being changed
+                valueChanged = true;
+                userDataToUpdate[key] = newValue;
+            }
+        } else if (newValue !== oldValue) {
+            // Handle cases where new value is empty string/null and old value was undefined (or vice-versa)
+            // to avoid logging non-changes.
+            const newIsEmpty = newValue === null || newValue === undefined || newValue === '';
+            const oldIsEmpty = oldValue === null || oldValue === undefined || oldValue === '';
+            if (!(newIsEmpty && oldIsEmpty)) {
+                 valueChanged = true;
+            }
+        }
+        
+        if (valueChanged) {
+            actualUpdatedFields.push(key);
+            (userDataToUpdate as any)[key] = newValue;
+        }
+      });
+      
+      if (userDataToUpdate.role === 'user') {
+        userDataToUpdate.organizerType = undefined;
+        userDataToUpdate.fullName = undefined;
+        userDataToUpdate.companyName = undefined;
+        userDataToUpdate.rif = undefined;
+        // Keep other profile fields if they were already there, user might want them.
       } else if (userDataToUpdate.organizerType === 'individual') {
-        delete userDataToUpdate.companyName;
-        delete userDataToUpdate.rif;
+        userDataToUpdate.companyName = undefined;
+        userDataToUpdate.rif = undefined;
       } else if (userDataToUpdate.organizerType === 'company') {
-        delete userDataToUpdate.fullName;
+        userDataToUpdate.fullName = undefined;
       }
-      if (userDataToUpdate.role !== 'user' && !userDataToUpdate.publicAlias) {
+
+      if (userDataToUpdate.role !== 'user' && !userDataToUpdate.publicAlias && userDataToUpdate.username) {
         userDataToUpdate.publicAlias = userDataToUpdate.username;
       }
+      
+      if (actualUpdatedFields.length > 0) {
+        // Remove id from data to be sent to updateUser as it's already passed as the first argument
+        const { id, ...updatePayload } = userDataToUpdate;
+        await updateUser(editingUser.id, updatePayload);
+        
+        await addActivityLog({
+          adminUsername: currentUser.username,
+          actionType: 'USER_EDITED',
+          targetInfo: `Usuario: ${userDataToUpdate.username || oldUsername}`,
+          details: { 
+            userId: editingUser.id, 
+            username: userDataToUpdate.username || oldUsername,
+            oldUsername: oldUsername !== (userDataToUpdate.username || oldUsername) ? oldUsername : undefined,
+            changedFields: actualUpdatedFields 
+          }
+        });
+        toast({ title: "Usuario Actualizado", description: `El usuario "${userDataToUpdate.username || oldUsername}" ha sido actualizado.` });
+      } else {
+        toast({ title: "Sin Cambios", description: "No se detectaron cambios en los datos del usuario." });
+      }
 
 
-      await updateUser(id, userDataToUpdate);
-      fetchUsersFromDB();
-      toast({ title: "Usuario Actualizado", description: `El usuario "${newUsername}" ha sido actualizado.` });
-
-      if (currentUser && currentUser.username === oldUsername && oldUsername !== newUsername) {
+      if (currentUser && currentUser.username === oldUsername && oldUsername !== (userDataToUpdate.username || oldUsername)) {
         toast({
           title: "Nombre de usuario cambiado",
           description: "Para que los cambios se reflejen completamente en tu sesión, por favor cierra sesión y vuelve a iniciarla.",
@@ -469,6 +538,7 @@ export default function UserManagementClient() {
         });
       }
       setIsEditDialogOpen(false);
+      fetchUsersFromDB(); // Refresh list after update
     } catch (error) {
       console.error("Error updating user:", error);
       toast({ title: "Error de Edición", description: "No se pudo actualizar el usuario.", variant: "destructive" });
@@ -479,7 +549,10 @@ export default function UserManagementClient() {
 
   const handleDeleteUserConfirm = async (userId: string) => {
     const userToDelete = users.find(u => u.id === userId);
-    if (!userToDelete) return;
+    if (!userToDelete || !currentUser?.username) {
+      toast({ title: "Error", description: "No se pudo identificar el usuario a eliminar o el administrador actual.", variant: "destructive" });
+      return;
+    }
 
     if (userToDelete.username === 'fundador') {
         toast({ title: "Acción no permitida", description: `El usuario principal 'fundador' no puede ser eliminado.`, variant: "destructive" });
@@ -488,11 +561,46 @@ export default function UserManagementClient() {
 
     try {
       await deleteUser(userId);
+      await addActivityLog({
+        adminUsername: currentUser.username,
+        actionType: 'USER_DELETED',
+        targetInfo: `Usuario: ${userToDelete.username}`,
+        details: { userId: userToDelete.id, username: userToDelete.username, role: userToDelete.role }
+      });
       fetchUsersFromDB();
       toast({ title: "Usuario Eliminado", description: `El usuario "${userToDelete.username}" ha sido eliminado.` });
     } catch (error) {
       console.error("Error deleting user:", error);
       toast({ title: "Error", description: "No se pudo eliminar el usuario.", variant: "destructive" });
+    }
+  };
+  
+  const handleToggleBlockUser = async (userToToggle: ManagedUser) => {
+    if (!currentUser?.username) {
+       toast({ title: "Error de Autenticación", description: "No se pudo identificar al administrador actual.", variant: "destructive" });
+       return;
+    }
+    if (userToToggle.username === 'fundador') {
+      toast({ title: "Acción no permitida", description: "El usuario 'fundador' no puede ser bloqueado.", variant: "destructive" });
+      return;
+    }
+    const newBlockedState = !userToToggle.isBlocked;
+    try {
+      await updateUser(userToToggle.id, { isBlocked: newBlockedState });
+      await addActivityLog({
+        adminUsername: currentUser.username,
+        actionType: newBlockedState ? 'USER_BLOCKED' : 'USER_UNBLOCKED',
+        targetInfo: `Usuario: ${userToToggle.username}`,
+        details: { userId: userToToggle.id, username: userToToggle.username, newBlockedState }
+      });
+      fetchUsersFromDB();
+      toast({
+        title: `Usuario ${newBlockedState ? 'Bloqueado' : 'Desbloqueado'}`,
+        description: `El usuario "${userToToggle.username}" ha sido ${newBlockedState ? 'bloqueado' : 'desbloqueado'}.`
+      });
+    } catch (error) {
+      console.error("Error toggling user block state:", error);
+      toast({ title: "Error", description: "No se pudo cambiar el estado de bloqueo del usuario.", variant: "destructive" });
     }
   };
 
@@ -502,8 +610,9 @@ export default function UserManagementClient() {
       id: userToEdit.id,
       username: userToEdit.username,
       role: userToEdit.role,
-      password: '',
+      password: '', // No precargar contraseña
       confirmPassword: '',
+      // isBlocked: userToEdit.isBlocked || false, // Ya no se gestiona aquí
       organizerType: userToEdit.organizerType || (userToEdit.role === 'admin' || userToEdit.role === 'founder' ? 'individual' : undefined),
       fullName: userToEdit.fullName || '',
       companyName: userToEdit.companyName || '',
@@ -622,6 +731,8 @@ export default function UserManagementClient() {
                   </div>
                   {errors.confirmPassword && <p className="text-sm text-destructive mt-1">{errors.confirmPassword.message}</p>}
                 </div>
+                 {/* isBlocked se mantiene aquí para la creación, pero es opcional y por defecto false */}
+                <input type="hidden" {...register("isBlocked")} value={false.toString()} />
               </>
             )}
 
@@ -656,19 +767,22 @@ export default function UserManagementClient() {
               <div className="space-y-3">
                 {users.map((userEntry) => (
                   <Card key={userEntry.id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-center bg-secondary/20">
-                    <div className="mb-2 sm:mb-0">
-                      <p className="font-semibold text-foreground">
+                    <div className="mb-3 sm:mb-0 flex-grow">
+                      <p className="font-semibold text-foreground flex items-center">
                         {userEntry.username}
-                        {userEntry.organizerType === 'company' && userEntry.companyName && ` (${userEntry.companyName})`}
-                        {userEntry.organizerType === 'individual' && userEntry.fullName && ` (${userEntry.fullName})`}
+                        {userEntry.isBlocked && <UserX className="ml-2 h-4 w-4 text-destructive" titleAccess="Usuario Bloqueado"/>}
+                        {!userEntry.isBlocked && <UserCheck className="ml-2 h-4 w-4 text-green-600" titleAccess="Usuario Activo"/>}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         Rol: <span className={userEntry.role === 'admin' ? 'font-bold text-primary' : (userEntry.role === 'founder' ? 'font-bold text-accent' : '')}>{userEntry.role}</span>
                         {userEntry.organizerType && ` - Tipo: ${userEntry.organizerType === 'individual' ? 'Individual' : 'Empresa'}`}
+                         {userEntry.isBlocked && <Badge variant="destructive" className="ml-2 text-xs">Bloqueado</Badge>}
                       </p>
+                      {(userEntry.organizerType === 'company' && userEntry.companyName) && <p className="text-xs text-muted-foreground">Empresa: {userEntry.companyName}</p>}
+                      {(userEntry.organizerType === 'individual' && userEntry.fullName) && <p className="text-xs text-muted-foreground">Nombre: {userEntry.fullName}</p>}
                       {userEntry.rif && <p className="text-xs text-muted-foreground">RIF: {userEntry.rif}</p>}
                     </div>
-                    <div className="flex space-x-2">
+                    <div className="flex space-x-2 flex-shrink-0">
                       <Button
                         variant="outline"
                         size="sm"
@@ -676,6 +790,19 @@ export default function UserManagementClient() {
                         className="text-xs h-8"
                       >
                         <Edit3 className="mr-1 h-3.5 w-3.5" /> Editar
+                      </Button>
+                      <Button
+                        variant={userEntry.isBlocked ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => handleToggleBlockUser(userEntry)}
+                        disabled={userEntry.username === 'fundador'}
+                        className={cn(
+                          "text-xs h-8",
+                          userEntry.isBlocked ? "bg-green-600 hover:bg-green-700 text-white" : "border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                        )}
+                      >
+                        {userEntry.isBlocked ? <UserCheck className="mr-1 h-3.5 w-3.5" /> : <ShieldAlert className="mr-1 h-3.5 w-3.5" />}
+                        {userEntry.isBlocked ? "Desbloq." : "Bloquear"}
                       </Button>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
@@ -771,6 +898,7 @@ export default function UserManagementClient() {
                 />
                 {editErrors.role && <p className="text-sm text-destructive mt-1">{editErrors.role.message}</p>}
               </div>
+              {/* El switch de isBlocked ya no está aquí */}
 
               {renderProfileFields(editRegister, editErrors, isEditSubmitting, 'edit-', (editingUser.username === 'fundador' && selectedRoleForEdit !== 'founder'), selectedRoleForEdit, selectedOrganizerTypeForEdit, editControl)}
 
@@ -791,5 +919,3 @@ export default function UserManagementClient() {
     </div>
   );
 }
-
-    

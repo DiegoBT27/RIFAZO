@@ -23,7 +23,7 @@ export interface Raffle {
   drawTime?: string | null;
   winningNumber?: number | null;
   winnerName?: string | null;
-  winnerPhone?: string | null; // Nuevo campo para el teléfono del ganador
+  winnerPhone?: string | null; 
   status?: 'active' | 'pending_draw' | 'completed' | 'cancelled';
 }
 
@@ -33,7 +33,7 @@ export interface RaffleResult {
   raffleName: string;
   winningNumber: number;
   winnerName?: string | null;
-  winnerPhone?: string | null; // Nuevo campo para el teléfono del ganador
+  winnerPhone?: string | null; 
   drawDate: string; // Fecha en que se realizó el sorteo (de la rifa original)
   prize: string; // Premio otorgado (de la rifa original)
   creatorUsername?: string; // Username del creador de la rifa
@@ -60,6 +60,7 @@ export interface ManagedUser {
   username: string;
   role: 'user' | 'admin' | 'founder';
   password?: string;
+  isBlocked?: boolean; 
   
   organizerType?: 'individual' | 'company';
   publicAlias?: string;
@@ -75,3 +76,22 @@ export interface ManagedUser {
   companyName?: string;
   rif?: string;
 }
+
+export type ActivityLogActionType = 
+  | 'PAYMENT_CONFIRMED' | 'PAYMENT_REJECTED' | 'PARTICIPATION_DELETED'
+  | 'RAFFLE_CREATED' | 'RAFFLE_EDITED' | 'RAFFLE_DELETED'
+  | 'USER_CREATED' | 'USER_EDITED' | 'USER_DELETED'
+  | 'USER_BLOCKED' | 'USER_UNBLOCKED' | 'WINNER_REGISTERED'
+  | 'ADMIN_LOGIN' | 'ADMIN_LOGOUT' // Ejemplo de otras acciones
+  | 'PROFILE_UPDATED';
+
+
+export interface ActivityLog {
+  id: string; // Firestore ID
+  timestamp: any; // Firestore ServerTimestamp, se convertirá a Date al leer
+  adminUsername: string; 
+  actionType: ActivityLogActionType;
+  targetInfo?: string; // Ej: "Rifa: Gran Rifa", "Usuario: admin2", "Participación ID: xyz"
+  details?: Record<string, any> | string; // Información adicional específica de la acción
+}
+

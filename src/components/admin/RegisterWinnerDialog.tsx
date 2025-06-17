@@ -18,9 +18,10 @@ import {
   DialogClose,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 import type { Raffle, RaffleResult, Participation } from '@/types';
 import { Loader2, Trophy, UserCheck, Phone } from 'lucide-react';
-import { updateRaffle, addRaffleResult, getParticipationsByRaffleId } from '@/lib/firebase/firestoreService';
+import { updateRaffle, addRaffleResult, getParticipationsByRaffleId, addActivityLog } from '@/lib/firebase/firestoreService';
 
 const registerWinnerSchema = z.object({
   winningNumber: z.coerce
@@ -42,6 +43,7 @@ interface RegisterWinnerDialogProps {
 
 export default function RegisterWinnerDialog({ raffle, isOpen, onOpenChange, onSuccess }: RegisterWinnerDialogProps) {
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<RegisterWinnerFormValues>({
@@ -55,6 +57,11 @@ export default function RegisterWinnerDialog({ raffle, isOpen, onOpenChange, onS
 
   const onSubmit: SubmitHandler<RegisterWinnerFormValues> = async (data) => {
     setIsSubmitting(true);
+    if (!currentUser?.username) {
+      toast({ title: "Error de Autenticación", description: "No se pudo identificar al usuario.", variant: "destructive" });
+      setIsSubmitting(false);
+      return;
+    }
     try {
       if (data.winningNumber > raffle.totalNumbers) {
         toast({
@@ -112,6 +119,19 @@ export default function RegisterWinnerDialog({ raffle, isOpen, onOpenChange, onS
         creatorUsername: raffle.creatorUsername,
       };
       await addRaffleResult(resultData);
+
+      await addActivityLog({
+        adminUsername: currentUser.username,
+        actionType: 'WINNER_REGISTERED',
+        targetInfo: `Rifa: ${raffle.name}`,
+        details: { 
+          raffleId: raffle.id, 
+          raffleName: raffle.name,
+          winningNumber: data.winningNumber,
+          winnerName: finalWinnerName,
+          winnerPhone: finalWinnerPhone
+        }
+      });
 
       toast({
         title: "Ganador Registrado",
@@ -195,3 +215,4 @@ export default function RegisterWinnerDialog({ raffle, isOpen, onOpenChange, onS
     </Dialog>
   );
 }
+
