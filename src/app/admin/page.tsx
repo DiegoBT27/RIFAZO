@@ -8,7 +8,7 @@ import Link from 'next/link';
 import SectionTitle from '@/components/shared/SectionTitle';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Settings, Loader2, Users, PackageCheck, ListCollapse, DatabaseZap } from 'lucide-react'; 
+import { Settings, Loader2, Users, PackageCheck, ListCollapse, DatabaseZap, HardDriveUpload } from 'lucide-react'; 
 
 export default function AdminDashboardPage() {
   const { user, isLoggedIn, isLoading: authIsLoading } = useAuth();
@@ -112,7 +112,7 @@ export default function AdminDashboardPage() {
           <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
             <CardHeader>
               <CardTitle className="font-headline text-xl flex items-center text-primary">
-                <DatabaseZap className="mr-2 h-6 w-6" />
+                <HardDriveUpload className="mr-2 h-6 w-6" /> 
                 Copia de Seguridad
               </CardTitle>
               <CardDescription>
@@ -128,8 +128,7 @@ export default function AdminDashboardPage() {
             </CardContent>
           </Card>
         )}
-
-
+         
         {isFounder && (
           <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 md:col-span-1 lg:col-span-1">
             <CardHeader>

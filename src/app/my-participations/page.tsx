@@ -14,9 +14,9 @@ import {
   Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription,
   DialogFooter, DialogClose,
 } from '@/components/ui/dialog';
-import type { Participation, ManagedUser, Raffle, AcceptedPaymentMethod } from '@/types';
-import { Ticket, CalendarDays, AlertCircle, CheckCircle, Clock, ShoppingBag, Eye, Info, Loader2, UserCircle as UserCircleIcon, MessageSquare, CreditCard, ListChecks, Trophy, Gift, Phone as PhoneIcon } from 'lucide-react';
-import { getParticipationsByUsername, getUserByUsername as getCreatorProfileByUsername, getRaffleById } from '@/lib/firebase/firestoreService';
+import type { Participation, ManagedUser, Raffle, AcceptedPaymentMethod, Rating } from '@/types'; // Added Rating
+import { Ticket, CalendarDays, AlertCircle, CheckCircle, Clock, ShoppingBag, Eye, Info, Loader2, UserCircle as UserCircleIcon, MessageSquare, CreditCard, ListChecks, Trophy, Gift, Phone as PhoneIcon, Star as StarIcon } from 'lucide-react'; // Added StarIcon
+import { getParticipationsByUsername, getUserByUsername as getCreatorProfileByUsername, getRaffleById, checkIfUserRatedRaffle } from '@/lib/firebase/firestoreService'; // Added checkIfUserRatedRaffle
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -24,6 +24,11 @@ import { cn } from '@/lib/utils';
 
 const UserProfileDialog = dynamic(() => import('@/components/shared/UserProfileDialog'), {
   loading: () => <div className="p-4 text-center">Cargando perfil...</div>,
+  ssr: false
+});
+
+const RateOrganizerDialog = dynamic(() => import('@/components/ratings/RateOrganizerDialog'), {
+  loading: () => <div className="p-4 text-center">Cargando formulario de calificación...</div>,
   ssr: false
 });
 
@@ -61,6 +66,11 @@ export default function MyParticipationsPage() {
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [selectedCreatorProfile, setSelectedCreatorProfile] = useState<ManagedUser | null>(null);
 
+  const [isRatingDialogOpen, setIsRatingDialogOpen] = useState(false);
+  const [ratingTarget, setRatingTarget] = useState<{raffleId: string, raffleName: string, organizerUsername: string} | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+
   useEffect(() => {
     if (!authIsLoading && !isLoggedIn) {
       router.replace('/login');
@@ -71,7 +81,7 @@ export default function MyParticipationsPage() {
     if (isLoggedIn && user?.username) {
       setPageIsLoading(true);
       try {
-        const loadedParticipations = await getParticipationsByUsername(user.username);
+        let loadedParticipations = await getParticipationsByUsername(user.username);
 
         const uniqueCreatorUsernames = Array.from(new Set(loadedParticipations.map(p => p.creatorUsername).filter(Boolean))) as string[];
         const profiles: Record<string, ManagedUser> = {};
@@ -93,6 +103,17 @@ export default function MyParticipationsPage() {
         }
         setRafflesMap(currentRafflesMap);
 
+        // Check if user has rated for each completed and confirmed participation
+        loadedParticipations = await Promise.all(loadedParticipations.map(async (p) => {
+          const raffle = currentRafflesMap[p.raffleId];
+          if (p.paymentStatus === 'confirmed' && raffle?.status === 'completed' && raffle.creatorUsername && user.username) {
+            const hasRated = await checkIfUserRatedRaffle(user.username, p.raffleId);
+            return { ...p, userHasRatedOrganizerForRaffle: hasRated };
+          }
+          return { ...p, userHasRatedOrganizerForRaffle: false }; // Default or not applicable
+        }));
+
+
         loadedParticipations.sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime());
         setParticipations(loadedParticipations);
       } catch (error) {
@@ -105,7 +126,7 @@ export default function MyParticipationsPage() {
     } else if (!authIsLoading) {
       setPageIsLoading(false);
     }
-  }, [isLoggedIn, user?.username, authIsLoading, toast]);
+  }, [isLoggedIn, user?.username, authIsLoading, toast, refreshKey]); // Added refreshKey
 
   useEffect(() => {
     fetchMyParticipations();
@@ -115,6 +136,17 @@ export default function MyParticipationsPage() {
     setSelectedCreatorProfile(profile);
     setIsProfileDialogOpen(true);
   }, []);
+
+  const handleOpenRatingDialog = (raffleId: string, raffleName: string, organizerUsername: string) => {
+    setRatingTarget({raffleId, raffleName, organizerUsername});
+    setIsRatingDialogOpen(true);
+  };
+
+  const handleRatingSubmitted = () => {
+    // Trigger a re-fetch of participations to update the "userHasRated" status
+    setRefreshKey(prev => prev + 1);
+  };
+
 
   const handleResendWhatsappMessage = (participation: Participation) => {
     const creatorProfile = participation.creatorUsername ? creatorProfilesMap[participation.creatorUsername] : undefined;
@@ -181,17 +213,24 @@ ID de Participación: ${participation.id}`;
             const currentStatusTextForDialog = statusTextForDialog[paymentStatusKey] || statusTextForDialog.unknown;
             const currentStatusVariantForDialog = statusVariantForDialog[paymentStatusKey] || statusVariantForDialog.unknown;
 
-            const isRaffleCompleted = participationRaffle?.status === 'completed' && participationRaffle.winningNumber != null;
-            const isWinner = isRaffleCompleted && participation.numbers.includes(participationRaffle.winningNumber!);
+            const isRaffleCompleted = participationRaffle?.status === 'completed';
+            const isWinner = isRaffleCompleted && 
+                             participationRaffle.winningNumber != null && 
+                             participation.numbers.includes(participationRaffle.winningNumber!);
             const winningNumberStr = participationRaffle?.winningNumber != null ? String(participationRaffle.winningNumber) : '';
 
+            const canRate = participation.paymentStatus === 'confirmed' && 
+                            isRaffleCompleted && 
+                            participationRaffle.creatorUsername && 
+                            !participation.userHasRatedOrganizerForRaffle;
+            
             return (
             <Dialog key={participation.id}>
               <DialogTrigger asChild>
                 <Card className={cn(
                   "shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col justify-between cursor-pointer",
                   isWinner && "border-2 border-green-500 bg-green-500/10",
-                  isRaffleCompleted && !isWinner && "border-muted-foreground/30"
+                  isRaffleCompleted && !isWinner && "border-red-500/30 bg-red-500/10"
                 )}>
                   <CardHeader className="pb-2 sm:pb-3 pt-3 sm:pt-4 px-3 sm:px-4">
                     <div className="flex justify-between items-start">
@@ -205,6 +244,11 @@ ID de Participación: ${participation.id}`;
                         <Trophy className="mr-1.5 h-4 w-4" /> ¡BOLETO GANADOR!
                       </Badge>
                     )}
+                    {isRaffleCompleted && !isWinner && participationRaffle.winningNumber != null && (
+                      <Badge variant="outline" className="mt-1.5 border-red-500/70 text-red-600/90 py-1 text-xs sm:text-sm w-fit">
+                        <AlertCircle className="mr-1.5 h-4 w-4" /> Nro. Ganador: {winningNumberStr}
+                      </Badge>
+                    )}
                   </CardHeader>
                   <CardContent className="p-3 sm:p-4 pt-1.5 sm:pt-2 space-y-1 text-xs">
                     <p className="flex items-center"><Ticket className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> Números: <span className="font-semibold ml-1">{participation.numbers.map(n => String(n)).join(', ')}</span></p>
@@ -215,14 +259,20 @@ ID de Participación: ${participation.id}`;
                     {creatorProfile && (
                       <p className="flex items-center"><ShoppingBag className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> De: <span className="font-semibold ml-1">{creatorProfile.publicAlias || creatorProfile.username}</span></p>
                     )}
-                     {isRaffleCompleted && (
-                        <p className="mt-1.5 pt-1.5 border-t border-dashed text-xs">
+                     {isRaffleCompleted && participationRaffle.winningNumber != null && (
+                        <p className={cn(
+                            "mt-1.5 pt-1.5 border-t border-dashed text-xs",
+                            isWinner ? "text-green-700 font-semibold" : "text-muted-foreground"
+                        )}>
                             {isWinner ? (
-                                <span className="font-semibold text-green-700">Tu número {winningNumberStr} fue el ganador del premio: {participationRaffle.prize}.</span>
+                                `¡Ganaste! Tu número ${winningNumberStr} es el ganador del premio: ${participationRaffle.prize}.`
                             ) : (
-                                <span className="text-muted-foreground">Sorteo finalizado. Nro. Ganador: {winningNumberStr}.</span>
+                                `Sorteo finalizado. El número ganador fue ${winningNumberStr}.`
                             )}
                         </p>
+                    )}
+                    {isRaffleCompleted && participation.userHasRatedOrganizerForRaffle && (
+                       <p className="text-xs text-green-600 italic mt-1.5">¡Gracias por tu calificación!</p>
                     )}
                   </CardContent>
                   <CardFooter className="p-3 sm:p-4 flex items-center justify-end gap-2">
@@ -247,6 +297,20 @@ ID de Participación: ${participation.id}`;
                     >
                       <MessageSquare className="h-4 w-4"/>
                     </Button>
+                     {canRate && participationRaffle.creatorUsername && (
+                       <Button
+                        variant="default"
+                        size="icon"
+                        className="h-8 w-8 bg-yellow-500 hover:bg-yellow-600 text-white"
+                        onClick={(e) => {
+                           e.stopPropagation(); 
+                           handleOpenRatingDialog(participation.raffleId, participationRaffle.name, participationRaffle.creatorUsername!);
+                        }}
+                        title="Calificar Organizador"
+                      >
+                        <StarIcon className="h-4 w-4"/>
+                      </Button>
+                     )}
                   </CardFooter>
                 </Card>
               </DialogTrigger>
@@ -285,14 +349,14 @@ ID de Participación: ${participation.id}`;
                       )}
                       {participation.paymentNotes && <p><strong>Notas Adicionales del Comprador:</strong> {participation.paymentNotes}</p>}
 
-                      {isRaffleCompleted && (
+                      {isRaffleCompleted && participationRaffle.winningNumber != null && (
                         <div className={cn(
                             "mt-3 p-3 rounded-md border space-y-0.5",
-                            isWinner ? "bg-green-500/10 border-green-500" : "bg-muted/30 border-muted-foreground/20"
+                            isWinner ? "bg-green-500/10 border-green-500" : "bg-red-500/10 border-red-500"
                         )}>
                             <h4 className={cn(
                                 "font-semibold text-sm flex items-center mb-1",
-                                isWinner ? "text-green-700" : "text-foreground"
+                                isWinner ? "text-green-700" : "text-red-700"
                             )}>
                                 {isWinner ? <Trophy className="h-4 w-4 mr-1.5" /> : <Gift className="h-4 w-4 mr-1.5" />}
                                 Resultado del Sorteo
@@ -306,8 +370,9 @@ ID de Participación: ${participation.id}`;
                                 </>
                             ) : (
                                 <>
-                                <p className="text-muted-foreground">El sorteo ha finalizado. El número ganador fue: <strong>{winningNumberStr}</strong>.</p>
-                                <p className="text-muted-foreground">Premio: {participationRaffle.prize}</p>
+                                <p className="text-red-700">El sorteo ha finalizado. El número ganador fue: <strong>{winningNumberStr}</strong>.</p>
+                                <p className="text-muted-foreground">Lamentablemente, tus números no resultaron ganadores esta vez.</p>
+                                <p className="text-muted-foreground">Premio de la rifa: {participationRaffle.prize}</p>
                                 {participationRaffle.winnerName && <p className="text-muted-foreground">Ganador: {participationRaffle.winnerName}</p>}
                                 {participationRaffle.winnerPhone && <p className="text-muted-foreground flex items-center"><PhoneIcon className="h-3.5 w-3.5 mr-1"/>Tel. Ganador: {participationRaffle.winnerPhone}</p>}
                                 </>
@@ -373,6 +438,16 @@ ID de Participación: ${participation.id}`;
           userProfile={selectedCreatorProfile}
           isOpen={isProfileDialogOpen}
           onOpenChange={setIsProfileDialogOpen}
+        />
+      )}
+      {ratingTarget && (
+        <RateOrganizerDialog
+          raffleId={ratingTarget.raffleId}
+          raffleName={ratingTarget.raffleName}
+          organizerUsername={ratingTarget.organizerUsername}
+          isOpen={isRatingDialogOpen}
+          onOpenChange={setIsRatingDialogOpen}
+          onRatingSubmitted={handleRatingSubmitted}
         />
       )}
     </div>

@@ -53,6 +53,8 @@ export interface Participation {
   participantIdCard?: string;
   participantPhone?: string;
   paymentNotes?: string;
+  // New field to track if user has rated this specific participation's raffle organizer
+  userHasRatedOrganizerForRaffle?: boolean; 
 }
 
 export interface ManagedUser {
@@ -75,6 +77,10 @@ export interface ManagedUser {
 
   companyName?: string;
   rif?: string;
+
+  // New fields for ratings
+  averageRating?: number;
+  ratingCount?: number;
 }
 
 export type ActivityLogActionType = 
@@ -82,8 +88,9 @@ export type ActivityLogActionType =
   | 'RAFFLE_CREATED' | 'RAFFLE_EDITED' | 'RAFFLE_DELETED'
   | 'USER_CREATED' | 'USER_EDITED' | 'USER_DELETED'
   | 'USER_BLOCKED' | 'USER_UNBLOCKED' | 'WINNER_REGISTERED'
-  | 'ADMIN_LOGIN' | 'ADMIN_LOGOUT' // Ejemplo de otras acciones
-  | 'PROFILE_UPDATED';
+  | 'ADMIN_LOGIN' | 'ADMIN_LOGOUT' 
+  | 'PROFILE_UPDATED'
+  | 'ORGANIZER_RATED'; // New activity log type
 
 
 export interface ActivityLog {
@@ -91,7 +98,18 @@ export interface ActivityLog {
   timestamp: any; // Firestore ServerTimestamp, se convertirá a Date al leer
   adminUsername: string; 
   actionType: ActivityLogActionType;
-  targetInfo?: string; // Ej: "Rifa: Gran Rifa", "Usuario: admin2", "Participación ID: xyz"
-  details?: Record<string, any> | string; // Información adicional específica de la acción
+  targetInfo?: string; 
+  details?: Record<string, any> | string; 
+}
+
+export interface Rating {
+  id: string; // Firestore ID
+  raffleId: string;
+  raffleName: string;
+  organizerUsername: string; // Username of the admin being rated
+  raterUsername: string; // Username of the user who submitted the rating
+  ratingStars: number; // e.g., 1-5
+  comment?: string; // Optional comment
+  createdAt: any; // Firestore ServerTimestamp
 }
 

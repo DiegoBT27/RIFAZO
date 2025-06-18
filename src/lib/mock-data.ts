@@ -1,11 +1,7 @@
 
 import type { Raffle, RaffleResult, Participation, ManagedUser } from '@/types';
 
-// Data will be primarily managed by Firestore. These can be empty.
-export const mockRaffles: Raffle[] = [];
-export const mockRaffleResults: RaffleResult[] = [];
-export const mockParticipations: Participation[] = [];
-
+// Base profile for the founder
 const fundadorProfileBase = {
   organizerType: 'individual' as 'individual' | 'company',
   fullName: 'Fundador Principal',
@@ -19,12 +15,19 @@ const fundadorProfileBase = {
 };
 
 // Initial platform users to seed Firestore if empty
-export const initialPlatformUsers: ManagedUser[] = [
+export const initialPlatformUsers: Omit<ManagedUser, 'id'>[] = [
   {
-    id: 'firestore-fundador-id', // Placeholder ID, Firestore will generate one
     username: 'fundador',
-    password: '27978916',
+    password: '27978916', // Keep the original password
     role: 'founder',
+    isBlocked: false,
     ...fundadorProfileBase,
   },
 ];
+
+// Initialize mockRaffles array - now empty
+export const mockRaffles: Raffle[] = [];
+
+// These were already empty but kept for structure
+export const mockRaffleResults: RaffleResult[] = [];
+export const mockParticipations: Participation[] = [];

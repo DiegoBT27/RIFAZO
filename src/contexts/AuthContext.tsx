@@ -11,7 +11,7 @@ import { getUsers, getUserByUsername, addUser } from '@/lib/firebase/firestoreSe
 interface User {
   username: string;
   role: 'admin' | 'user' | 'founder' | null;
-  isBlocked?: boolean; // Añadido para consistencia, aunque el objeto User principal no lo usa tanto como ManagedUser
+  isBlocked?: boolean; 
 }
 
 interface LoginResult {
@@ -55,7 +55,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             const userExists = await getUserByUsername(userData.username);
             if (!userExists) {
               console.log(`[AuthContext] Seeding user: ${userData.username}`);
-              await addUser({...userData, isBlocked: false }); // Asegurar que isBlocked se setea
+              await addUser({...userData, isBlocked: false }); 
             } else {
               console.log(`[AuthContext] User ${userData.username} already exists in Firestore, skipping seed.`);
             }
@@ -72,7 +72,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           const dbUser = await getUserByUsername(parsedUser.username);
           console.log(`[AuthContext] Firestore user data for '${parsedUser.username}':`, dbUser);
           
-          if (dbUser && dbUser.role === parsedUser.role) { // Validar rol
+          if (dbUser && dbUser.role === parsedUser.role) { 
             if (dbUser.isBlocked === true) {
               console.warn(`[AuthContext] User '${parsedUser.username}' is blocked. Clearing session.`);
               localStorage.removeItem('currentUser');
@@ -132,7 +132,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.error("[AuthContext] Error during login:", error);
     }
     
-    return { success: false, reason: 'credentials_invalid' }; // Fallback
+    return { success: false, reason: 'credentials_invalid' }; 
   };
 
   const logout = () => {
@@ -157,4 +157,3 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 };
-

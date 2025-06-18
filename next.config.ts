@@ -1,8 +1,7 @@
 
-import type {NextConfig} from 'next';
+import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  /* config options here */
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -19,11 +18,10 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'https',
-        hostname: 'www.android.com', // Added this hostname
+        hostname: 'www.android.com',
         port: '',
-        pathname: '/**', // Allow any path from this hostname
-      }
-      // Firebase Storage hostname removed
+        pathname: '/**',
+      },
     ],
   },
 };

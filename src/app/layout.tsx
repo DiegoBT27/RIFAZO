@@ -5,10 +5,10 @@ import { Toaster } from "@/components/ui/toaster";
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import { AuthProvider } from '@/contexts/AuthContext';
-import PageLoader from '@/components/layout/PageLoader'; // Import PageLoader
+import PageLoader from '@/components/layout/PageLoader'; 
 
 export const metadata: Metadata = {
-  title: 'RIFAZO-VE',
+  title: 'RIFAZO',
   description: 'Participa en la mejor APP de Rifas',
 };
 
@@ -32,7 +32,7 @@ export default function RootLayout({
           </main>
           <Footer />
           <Toaster />
-          <PageLoader /> {/* Add PageLoader here */}
+          <PageLoader /> 
         </AuthProvider>
       </body>
     </html>

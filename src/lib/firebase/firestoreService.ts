@@ -16,8 +16,10 @@ import {
   orderBy,
   limit,
   Timestamp,
+  runTransaction,
 } from 'firebase/firestore';
-import type { Raffle, ManagedUser, Participation, RaffleResult, ActivityLog } from '@/types';
+import type { Raffle, ManagedUser, Participation, RaffleResult, ActivityLog, Rating } from '@/types';
+// initialPlatformUsers import removed as it's no longer used here
 
 // Users Collection
 const usersCollection = collection(db, 'users');
@@ -43,9 +45,11 @@ export const addUser = async (userData: Omit<ManagedUser, 'id'>): Promise<Manage
     password: userData.password, 
     role: userData.role || 'user',
     isBlocked: userData.isBlocked || false,
+    averageRating: 0, // Initialize rating fields
+    ratingCount: 0,   // Initialize rating fields
   };
 
-  const optionalFields: (keyof Omit<ManagedUser, 'id' | 'username' | 'password' | 'role' | 'isBlocked'>)[] = [
+  const optionalFields: (keyof Omit<ManagedUser, 'id' | 'username' | 'password' | 'role' | 'isBlocked' | 'averageRating' | 'ratingCount'>)[] = [
     'organizerType', 'fullName', 'companyName', 'rif', 'publicAlias',
     'whatsappNumber', 'locationState', 'locationCity',
     'email', 'bio', 'adminPaymentMethodsInfo'
@@ -63,8 +67,8 @@ export const addUser = async (userData: Omit<ManagedUser, 'id'>): Promise<Manage
     dataToSave.publicAlias = userData.username;
   }
 
-
   const docRef = await addDoc(usersCollection, dataToSave);
+  // Construct the full ManagedUser object to return, including potentially undefined optional fields
   const savedUser: ManagedUser = {
     id: docRef.id,
     username: dataToSave.username,
@@ -82,6 +86,8 @@ export const addUser = async (userData: Omit<ManagedUser, 'id'>): Promise<Manage
     email: dataToSave.email,
     bio: dataToSave.bio,
     adminPaymentMethodsInfo: dataToSave.adminPaymentMethodsInfo,
+    averageRating: dataToSave.averageRating,
+    ratingCount: dataToSave.ratingCount,
   };
   return savedUser;
 };
@@ -160,6 +166,12 @@ export const deleteRaffleAndParticipations = async (raffleId: string): Promise<v
   const resultsQuery = query(raffleResultsCollection, where('raffleId', '==', raffleId));
   const resultsSnapshot = await getDocs(resultsQuery);
   resultsSnapshot.forEach(doc => {
+    batch.delete(doc.ref);
+  });
+  
+  const ratingsQuery = query(ratingsCollection, where('raffleId', '==', raffleId));
+  const ratingsSnapshot = await getDocs(ratingsQuery);
+  ratingsSnapshot.forEach(doc => {
     batch.delete(doc.ref);
   });
 
@@ -253,6 +265,67 @@ export const getActivityLogs = async (limitCount: number = 100): Promise<Activit
   });
 };
 
+// Ratings Collection
+const ratingsCollection = collection(db, 'ratings');
+
+export const addRating = async (ratingData: Omit<Rating, 'id' | 'createdAt'>): Promise<Rating> => {
+  const newRatingData = { ...ratingData, createdAt: serverTimestamp() };
+  const docRef = await addDoc(ratingsCollection, newRatingData);
+
+  // Update organizer's average rating and count
+  const organizerUser = await getUserByUsername(ratingData.organizerUsername);
+  if (organizerUser) {
+    const allOrganizerRatingsSnapshot = await getDocs(query(ratingsCollection, where('organizerUsername', '==', ratingData.organizerUsername)));
+    const ratingsCount = allOrganizerRatingsSnapshot.size;
+    let totalStars = 0;
+    allOrganizerRatingsSnapshot.forEach(doc => {
+      totalStars += (doc.data() as Rating).ratingStars;
+    });
+    const averageRating = ratingsCount > 0 ? parseFloat((totalStars / ratingsCount).toFixed(1)) : 0;
+
+    await updateUser(organizerUser.id, { averageRating, ratingCount: ratingsCount });
+  }
+  
+  // Update the participation document to mark that this raffle has been rated by this user
+  const participationsQuery = query(
+    participationsCollection,
+    where('raffleId', '==', ratingData.raffleId),
+    where('participantUsername', '==', ratingData.raterUsername)
+  );
+  const participationsSnapshot = await getDocs(participationsQuery);
+  if (!participationsSnapshot.empty) {
+    const participationDocToUpdate = participationsSnapshot.docs[0];
+    await updateDoc(participationDocToUpdate.ref, { userHasRatedOrganizerForRaffle: true });
+  }
+
+
+  return { id: docRef.id, ...newRatingData } as Rating;
+};
+
+export const getRatingsByOrganizerUsername = async (organizerUsername: string): Promise<Rating[]> => {
+  const q = query(ratingsCollection, where('organizerUsername', '==', organizerUsername), orderBy('createdAt', 'desc'));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(doc => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      ...data,
+      createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(0)
+    } as Rating;
+  });
+};
+
+export const checkIfUserRatedRaffle = async (raterUsername: string, raffleId: string): Promise<boolean> => {
+  const q = query(
+    ratingsCollection,
+    where('raterUsername', '==', raterUsername),
+    where('raffleId', '==', raffleId)
+  );
+  const snapshot = await getDocs(q);
+  return !snapshot.empty;
+};
+
+
 // --- Backup and Restore ---
 
 const serializeDocument = (docData: Record<string, any>): Record<string, any> => {
@@ -298,14 +371,31 @@ export const exportFirestoreCollections = async (collectionNames: string[]): Pro
   return data;
 };
 
-const deleteAllDocumentsInCollection = async (collectionName: string): Promise<void> => {
+const deleteAllDocumentsInCollection = async (collectionName: string, exceptions: { field: string, value: any }[] = []): Promise<number> => {
   const colRef = collection(db, collectionName);
   const snapshot = await getDocs(colRef);
-  if (snapshot.empty) return;
+  if (snapshot.empty) return 0;
 
   const batch = writeBatch(db);
-  snapshot.docs.forEach(doc => batch.delete(doc.ref));
+  let deletedCount = 0;
+  snapshot.docs.forEach(doc => {
+    let shouldDelete = true;
+    if (exceptions.length > 0) {
+      const docData = doc.data();
+      for (const exception of exceptions) {
+        if (docData[exception.field] === exception.value) {
+          shouldDelete = false;
+          break;
+        }
+      }
+    }
+    if (shouldDelete) {
+      batch.delete(doc.ref);
+      deletedCount++;
+    }
+  });
   await batch.commit();
+  return deletedCount;
 };
 
 export const importFirestoreCollections = async (
@@ -357,3 +447,7 @@ export const importFirestoreCollections = async (
   }
   return { success: errors.length === 0, errors, summary };
 };
+
+// Function clearAllTestDataFromFirestore removed per user request in previous interaction.
+// If it needs to be re-added, its definition would go here.
+

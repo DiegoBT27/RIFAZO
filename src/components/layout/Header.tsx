@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import React, { useState } from 'react'; 
 import { usePathname } from 'next/navigation'; 
-import { Ticket, Trophy, Menu as MenuIcon, LayoutDashboard, LogOut, ShieldCheck, Headset, LogIn, UserCircle, ListChecks, UserPlus, PackageCheck as PackageCheckIcon, Sparkles } from 'lucide-react'; 
+import { Ticket, Trophy, Menu as MenuIcon, LayoutDashboard, LogOut, ShieldCheck, Headset, LogIn, UserCircle, ListChecks, UserPlus, PackageCheck as PackageCheckIcon, Sparkles, DatabaseZap } from 'lucide-react'; 
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -34,7 +34,7 @@ export default function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { user, isLoggedIn, logout, isLoading } = useAuth();
   const pathname = usePathname();
-  // const router = useRouter(); 
+  
 
   if (isLoading) return null;
 
@@ -51,6 +51,7 @@ export default function Header() {
       userSpecificNavItems.push({ href: "/admin/my-raffles", label: "Mis Rifas", icon: <ListChecks /> });
       userSpecificNavItems.push({ href: "/admin/payment-confirmation", label: "Confirmar Pagos", icon: <PackageCheckIcon /> });
       userSpecificNavItems.push({ href: "/admin", label: user.role === 'admin' ? "Panel Admin" : "Panel Fundador", icon: user.role === 'admin' ? <LayoutDashboard /> : <ShieldCheck /> });
+      // Link to Dev Tools removed
     }
   }
 

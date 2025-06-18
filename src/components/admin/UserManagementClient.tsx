@@ -764,8 +764,8 @@ export default function UserManagementClient() {
                   <div className="mb-3 sm:mb-0 flex-grow">
                     <p className="font-semibold text-foreground flex items-center">
                       {userEntry.username}
-                      {userEntry.isBlocked && <UserX className="ml-2 h-4 w-4 text-destructive" titleAccess="Usuario Bloqueado"/>}
-                      {!userEntry.isBlocked && <UserCheck className="ml-2 h-4 w-4 text-green-600" titleAccess="Usuario Activo"/>}
+                      {userEntry.isBlocked && <UserX className="ml-2 h-4 w-4 text-destructive" title="Usuario Bloqueado"/>}
+                      {!userEntry.isBlocked && <UserCheck className="ml-2 h-4 w-4 text-green-600" title="Usuario Activo"/>}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Rol: <span className={userEntry.role === 'admin' ? 'font-bold text-primary' : (userEntry.role === 'founder' ? 'font-bold text-accent' : '')}>{userEntry.role}</span>
@@ -913,6 +913,3 @@ export default function UserManagementClient() {
     </div>
   );
 }
-
-
-    
