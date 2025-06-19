@@ -13,6 +13,7 @@ import type { ManagedUser, Rating } from '@/types';
 import { Info, MapPin, ThumbsUp, Loader2, BadgeInfo } from 'lucide-react';
 import { ScrollArea } from '../ui/scroll-area';
 import { getUserByUsername, getRatingsByOrganizerUsername } from '@/lib/firebase/firestoreService';
+import { getPlanDetails } from '@/lib/config/plans'; // Import getPlanDetails
 import StarRatingDisplay from '../ratings/StarRatingDisplay';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -29,11 +30,16 @@ export default function UserProfileDialog({ userProfile: initialProfile, isOpen,
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
   const [isLoadingRatings, setIsLoadingRatings] = useState(false);
+  const [organizerPlanDisplayName, setOrganizerPlanDisplayName] = useState<string | null>(null);
+  const [canShowRatingsPublicly, setCanShowRatingsPublicly] = useState(false);
+
 
   const fetchData = useCallback(async () => {
     if (!initialProfile?.username) {
-      setProfileData(initialProfile); // Could be null
+      setProfileData(initialProfile); 
       setRatings([]);
+      setOrganizerPlanDisplayName(null);
+      setCanShowRatingsPublicly(false);
       setIsLoadingProfile(false);
       setIsLoadingRatings(false);
       return;
@@ -43,27 +49,36 @@ export default function UserProfileDialog({ userProfile: initialProfile, isOpen,
     setIsLoadingRatings(true);
 
     try {
-      // Fetch the latest profile data
       const updatedProfile = await getUserByUsername(initialProfile.username);
-      setProfileData(updatedProfile || initialProfile); // Use updated or fallback to initial
+      setProfileData(updatedProfile || initialProfile); 
 
-      // Fetch ratings only if the profile is an admin or founder
       if (updatedProfile && (updatedProfile.role === 'admin' || updatedProfile.role === 'founder')) {
-        let fetchedRatings = await getRatingsByOrganizerUsername(updatedProfile.username);
-        fetchedRatings.sort((a, b) => {
-            // Ensure createdAt is a valid Date object before getTime
-            const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
-            const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
-            return dateB - dateA; // Sort by most recent first
-        });
-        setRatings(fetchedRatings);
+        const planDetails = getPlanDetails(updatedProfile.planActive ? updatedProfile.plan : null);
+        setOrganizerPlanDisplayName(planDetails.displayName);
+        setCanShowRatingsPublicly(planDetails.canDisplayRatingsPublicly);
+
+        if (planDetails.canDisplayRatingsPublicly) {
+          let fetchedRatings = await getRatingsByOrganizerUsername(updatedProfile.username);
+          fetchedRatings.sort((a, b) => {
+              const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
+              const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
+              return dateB - dateA; 
+          });
+          setRatings(fetchedRatings);
+        } else {
+          setRatings([]);
+        }
       } else {
-        setRatings([]); // Clear ratings if not admin/founder
+        setRatings([]);
+        setOrganizerPlanDisplayName(null);
+        setCanShowRatingsPublicly(false);
       }
     } catch (error) {
       console.error("Error fetching profile data or ratings:", error);
-      setProfileData(initialProfile); // Fallback to initial on error
+      setProfileData(initialProfile); 
       setRatings([]);
+      setOrganizerPlanDisplayName(null);
+      setCanShowRatingsPublicly(false);
     } finally {
       setIsLoadingProfile(false);
       setIsLoadingRatings(false);
@@ -73,10 +88,6 @@ export default function UserProfileDialog({ userProfile: initialProfile, isOpen,
   useEffect(() => {
     if (isOpen && initialProfile) {
       fetchData();
-    } else if (!isOpen) {
-      // Optionally reset state when dialog closes to ensure fresh data next time
-      // setProfileData(null);
-      // setRatings([]);
     }
   }, [isOpen, initialProfile, fetchData]);
 
@@ -107,7 +118,7 @@ export default function UserProfileDialog({ userProfile: initialProfile, isOpen,
   const averageRating = profileData?.averageRating || 0;
   const ratingCount = profileData?.ratingCount || 0;
 
-  if (!initialProfile && isOpen) { // Handles case where dialog is opened without a valid initialProfile
+  if (!initialProfile && isOpen) { 
       return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent>
@@ -151,11 +162,12 @@ export default function UserProfileDialog({ userProfile: initialProfile, isOpen,
                   )}
                   <DialogDescription className="text-xs text-muted-foreground mt-1">
                     Organizador de Rifas ({profileData.role}) - {profileData.organizerType === 'company' ? 'Empresa' : 'Individual'}
+                    {organizerPlanDisplayName && ` - Plan: ${organizerPlanDisplayName}`}
                   </DialogDescription>
                   {profileData.organizerType === 'company' && profileData.rif && (
                     <DialogDescription className="text-xs text-muted-foreground mt-0.5">RIF: {profileData.rif}</DialogDescription>
                   )}
-                  {(profileData.role === 'admin' || profileData.role === 'founder') && (
+                  {(profileData.role === 'admin' || profileData.role === 'founder') && canShowRatingsPublicly && (
                     <div className="flex items-center mt-1.5">
                       <StarRatingDisplay rating={averageRating} size={16} />
                       <span className="ml-1.5 text-xs text-muted-foreground">({ratingCount} {ratingCount === 1 ? 'calificación' : 'calificaciones'})</span>
@@ -210,6 +222,8 @@ export default function UserProfileDialog({ userProfile: initialProfile, isOpen,
                       <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                       <span className="ml-2 text-muted-foreground text-xs italic">Cargando calificaciones...</span>
                     </div>
+                  ) : !canShowRatingsPublicly ? (
+                     <p className="text-muted-foreground text-xs italic">Las calificaciones para este organizador no son públicas según su plan actual.</p>
                   ) : ratings.length > 0 ? (
                     <ScrollArea className="max-h-[200px] overflow-y-auto pr-1 simple-scrollbar">
                       <div className="space-y-2">
@@ -262,4 +276,3 @@ export default function UserProfileDialog({ userProfile: initialProfile, isOpen,
     </Dialog>
   );
 }
-        

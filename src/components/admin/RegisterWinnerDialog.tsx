@@ -57,7 +57,7 @@ export default function RegisterWinnerDialog({ raffle, isOpen, onOpenChange, onS
 
   const onSubmit: SubmitHandler<RegisterWinnerFormValues> = async (data) => {
     setIsSubmitting(true);
-    if (!currentUser?.username) {
+    if (!currentUser || !currentUser.username) { // Added direct check for currentUser
       toast({ title: "Error de Autenticación", description: "No se pudo identificar al usuario.", variant: "destructive" });
       setIsSubmitting(false);
       return;
@@ -76,12 +76,11 @@ export default function RegisterWinnerDialog({ raffle, isOpen, onOpenChange, onS
       let finalWinnerName = data.winnerName;
       let finalWinnerPhone = data.winnerPhone;
 
-      // Si el admin no ingresó nombre/teléfono, intentar obtenerlos de la participación ganadora
       if ((!finalWinnerName || finalWinnerName.trim() === '') && data.winningNumber != null) {
         try {
           const participations = await getParticipationsByRaffleId(raffle.id);
           const winningParticipation = participations.find(p =>
-            p.paymentStatus === 'confirmed' && // Solo considerar participaciones confirmadas
+            p.paymentStatus === 'confirmed' && 
             p.numbers.includes(data.winningNumber!)
           );
 
@@ -95,8 +94,6 @@ export default function RegisterWinnerDialog({ raffle, isOpen, onOpenChange, onS
           }
         } catch (searchError) {
           console.error("Error searching for winning participation details:", searchError);
-          // No es crítico, se procederá sin estos datos si la búsqueda falla
-          // El admin puede editarlos más tarde si es necesario o si el resultado es inesperado
         }
       }
       
@@ -106,7 +103,7 @@ export default function RegisterWinnerDialog({ raffle, isOpen, onOpenChange, onS
         winnerPhone: finalWinnerPhone || null,
         status: 'completed',
       };
-      await updateRaffle(raffle.id, raffleUpdateData);
+      await updateRaffle(raffle.id, raffleUpdateData, currentUser); // Pass currentUser as editor
 
       const resultData: Omit<RaffleResult, 'id'> = {
         raffleId: raffle.id,

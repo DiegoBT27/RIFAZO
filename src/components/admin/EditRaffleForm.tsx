@@ -25,9 +25,11 @@ import {
 } from "@/components/ui/select";
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Raffle, AcceptedPaymentMethod } from '@/types';
+import type { Raffle, AcceptedPaymentMethod, ManagedUser } from '@/types';
 import { AVAILABLE_PAYMENT_METHODS } from '@/lib/payment-methods';
 import { DRAW_TIMES } from '@/lib/lottery-data';
+import { getPlanDetails, type PlanDetails as AppPlanDetails } from '@/lib/config/plans';
+import PlanLimitDialog from '@/components/admin/PlanLimitDialog';
 
 import { CalendarIcon } from 'lucide-react';
 import { Loader2 } from 'lucide-react';
@@ -48,15 +50,17 @@ import { updateRaffle, addActivityLog } from '@/lib/firebase/firestoreService';
 
 const todayAtMidnight = new Date();
 todayAtMidnight.setHours(0, 0, 0, 0);
+const PLACEHOLDER_IMAGE_URL = "https://placehold.co/800x450.png";
 
-const editRaffleFormSchema = z.object({
+
+const createEditRaffleFormSchema = (planMaxTickets: number | Infinity, planDisplayName: string, planAllowsCustomImage: boolean) => z.object({
   id: z.string(),
   name: z.string().min(5, { message: "El nombre debe tener al menos 5 caracteres." }),
   description: z.string().min(10, { message: "La descripción debe tener al menos 10 caracteres." }),
   image: z.string().min(1, { message: "Se requiere una imagen para la rifa." }),
   prize: z.string().min(3, { message: "El premio debe tener al menos 3 caracteres." }),
   pricePerTicket: z.coerce.number().positive({ message: "El precio debe ser un número positivo." }),
-  totalNumbers: z.coerce.number().int().min(10, { message: "Debe haber al menos 10 números." }).max(500, {message: "Máximo 500 números"}),
+  totalNumbers: z.coerce.number().int().min(10, { message: "Debe haber al menos 10 números." }),
   drawDate: z.date({ required_error: "La fecha del sorteo es obligatoria."}),
   lotteryName: z.string().optional().nullable(),
   drawTime: z.string().optional().nullable(),
@@ -97,10 +101,24 @@ const editRaffleFormSchema = z.object({
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "La descripción para 'Otro Método' no debe exceder 250 caracteres.", path: ["paymentMethodDetails.otro_description"]});
     }
   }
+  if (planMaxTickets !== Infinity && data.totalNumbers > planMaxTickets) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Tu plan actual (${planDisplayName}) permite un máximo de ${planMaxTickets} números por rifa.`,
+      path: ["totalNumbers"],
+    });
+  }
+  if (!planAllowsCustomImage && data.image && data.image !== PLACEHOLDER_IMAGE_URL && data.image !== raffle?.image /* Allow existing image if plan changed */) {
+    ctx.addIssue({
+     code: z.ZodIssueCode.custom,
+     message: `Tu plan actual (${planDisplayName}) no permite cambiar a una nueva imagen personalizada. Se mantendrá la imagen actual o una por defecto.`,
+     path: ["image"],
+   });
+ }
 });
 
 
-type EditRaffleFormValues = z.infer<typeof editRaffleFormSchema>;
+type EditRaffleFormValues = z.infer<ReturnType<typeof createEditRaffleFormSchema>>;
 
 interface EditRaffleFormProps {
   raffle: Raffle;
@@ -113,9 +131,40 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
   const [isLoading, setIsLoading] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(raffle?.image || null);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-  const formPrefix = 'edit-'; 
+  const [isPlanLimitDialogOpen, setIsPlanLimitDialogOpen] = useState(false);
+  const formPrefix = 'edit-';
   const [initialFormState, setInitialFormState] = useState<EditRaffleFormValues | null>(null);
 
+  const founderPlanDetailsOverride: AppPlanDetails = {
+    name: 'pro',
+    displayName: 'Acceso de Fundador (Ilimitado)',
+    durationDays: Infinity,
+    raffleLimit: Infinity,
+    maxTicketsPerRaffle: Infinity,
+    canEditRaffles: true,
+    editRaffleLimit: Infinity,
+    canDisplayRatingsPublicly: true,
+    includesCustomImage: true,
+    includesAdvancedStats: true,
+    includesDetailedAnalytics: true,
+    includesFeaturedListing: true,
+    includesAiReceiptValidation: true,
+    includesAutomatedBackups: true,
+    includesActivityLog: true,
+    includesExclusiveSupport: true,
+    featureListIds: [],
+    tagline: '',
+  };
+
+  const effectivePlanDetails = currentUser?.role === 'founder'
+    ? founderPlanDetailsOverride
+    : getPlanDetails(currentUser?.planActive ? currentUser?.plan : null);
+
+  const currentEditRaffleFormSchema = createEditRaffleFormSchema(
+    effectivePlanDetails.maxTicketsPerRaffle,
+    effectivePlanDetails.displayName,
+    effectivePlanDetails.includesCustomImage
+  );
 
   const parseInitialPaymentDetails = useCallback((acceptedMethods: AcceptedPaymentMethod[] | undefined) => {
     const details = {
@@ -142,12 +191,12 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
 
 
   const { register, handleSubmit, control, reset, setValue, watch, getValues, formState: { errors } } = useForm<EditRaffleFormValues>({
-    resolver: zodResolver(editRaffleFormSchema),
-    defaultValues: { // These will be overridden by useEffect, but good practice to set structure
+    resolver: zodResolver(currentEditRaffleFormSchema),
+    defaultValues: {
       id: raffle?.id || '',
       name: raffle?.name || '',
       description: raffle?.description || '',
-      image: raffle?.image || '',
+      image: raffle?.image || PLACEHOLDER_IMAGE_URL,
       prize: raffle?.prize || '',
       pricePerTicket: raffle?.pricePerTicket || 1,
       totalNumbers: raffle?.totalNumbers || 100,
@@ -165,7 +214,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
         id: raffle.id,
         name: raffle.name,
         description: raffle.description,
-        image: raffle.image,
+        image: raffle.image || (effectivePlanDetails.includesCustomImage ? '' : PLACEHOLDER_IMAGE_URL),
         prize: raffle.prize,
         pricePerTicket: raffle.pricePerTicket,
         totalNumbers: raffle.totalNumbers,
@@ -177,14 +226,19 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
       };
       reset(initialData);
       setInitialFormState(initialData);
-      setImagePreview(raffle.image);
+      setImagePreview(initialData.image);
     }
-  }, [raffle, reset, parseInitialPaymentDetails]);
+  }, [raffle, reset, parseInitialPaymentDetails, effectivePlanDetails.includesCustomImage]);
 
 
   const selectedPaymentMethodIds = watch("selectedPaymentMethodIds");
 
   const handleImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    if (currentUser?.role !== 'founder' && !effectivePlanDetails.includesCustomImage) {
+      toast({ title: "Plan Limitado", description: "Tu plan actual no permite cambiar la imagen.", variant: "destructive" });
+      event.target.value = ''; 
+      return;
+    }
     const file = event.target.files?.[0];
     if (file) {
       if (file.size > 700 * 1024) {
@@ -208,17 +262,40 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
 
   const onSubmit: SubmitHandler<EditRaffleFormValues> = async (data) => {
     setIsLoading(true);
-    if (!currentUser?.username || !initialFormState) {
-      toast({ title: "Error de Autenticación o Estado Inicial", description: "No se pudo identificar al usuario o el estado inicial de la rifa.", variant: "destructive" });
+
+    if (!currentUser) {
+      toast({ title: "Error de Sesión", description: "Tu sesión ha expirado o no se pudo verificar. Por favor, inicia sesión de nuevo.", variant: "destructive" });
       setIsLoading(false);
       return;
     }
+    if (!initialFormState) {
+      toast({ title: "Error de Formulario", description: "El estado inicial de la rifa no está disponible. Por favor, recarga la página.", variant: "destructive" });
+      setIsLoading(false);
+      return;
+    }
+
+
+    const isFounder = currentUser.role === 'founder';
+    // Use effectivePlanDetails for checking permissions
+    if (!isFounder && !effectivePlanDetails.canEditRaffles) {
+        setPlanLimitMessage("editar rifas");
+        setIsPlanLimitDialogOpen(true);
+        setIsLoading(false);
+        return;
+    }
+    if (!isFounder && effectivePlanDetails.canEditRaffles === 'limited' && (currentUser.rafflesEditedThisPeriod || 0) >= (effectivePlanDetails.editRaffleLimit || Infinity)) {
+        setPlanLimitMessage(`editar más de ${effectivePlanDetails.editRaffleLimit} rifas`);
+        setIsPlanLimitDialogOpen(true);
+        setIsLoading(false);
+        return;
+    }
+
 
     const acceptedPaymentMethodsResult: AcceptedPaymentMethod[] = data.selectedPaymentMethodIds
       .map(id => {
         const methodOption = AVAILABLE_PAYMENT_METHODS.find(pm => pm.id === id);
         if (!methodOption) return null;
-        
+
         let adminDetails: string | undefined = undefined;
         if (id === 'pagoMovil' && data.paymentMethodDetails) {
           adminDetails = `CI: ${data.paymentMethodDetails.pagoMovil_ci}, Cel: ${data.paymentMethodDetails.pagoMovil_phone}, Banco: ${data.paymentMethodDetails.pagoMovil_bank}`;
@@ -238,11 +315,14 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
         };
       })
       .filter(Boolean) as AcceptedPaymentMethod[];
+      
+    const finalImage = (isFounder || effectivePlanDetails.includesCustomImage) ? data.image : initialFormState.image;
+
 
     const raffleDataForDb: Partial<Raffle> = {
       name: data.name,
       description: data.description,
-      image: data.image,
+      image: finalImage,
       prize: data.prize,
       pricePerTicket: data.pricePerTicket,
       totalNumbers: data.totalNumbers,
@@ -251,7 +331,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
       drawTime: (data.drawTime && data.drawTime !== 'unspecified_time') ? data.drawTime : null,
       acceptedPaymentMethods: acceptedPaymentMethodsResult,
     };
-    
+
     const actualUpdatedFields: string[] = [];
     (Object.keys(raffleDataForDb) as Array<keyof typeof raffleDataForDb>).forEach(key => {
         if (key === 'drawDate') {
@@ -268,30 +348,20 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
                 actualUpdatedFields.push(key);
             }
         } else if (String(raffleDataForDb[key]) !== String(initialFormState[key as keyof EditRaffleFormValues])) {
-             if (initialFormState[key as keyof EditRaffleFormValues] !== undefined || raffleDataForDb[key] !== undefined) { // Avoid logging if both were undefined/null
+             if (initialFormState[key as keyof EditRaffleFormValues] !== undefined || raffleDataForDb[key] !== undefined) {
                  actualUpdatedFields.push(key);
              }
         }
     });
-    
-    if (data.image !== initialFormState.image) { // Specifically check image as it's a string but potentially large
+
+    if (data.image !== initialFormState.image && (isFounder || effectivePlanDetails.includesCustomImage)) {
       if (!actualUpdatedFields.includes('image')) actualUpdatedFields.push('image');
     }
 
 
     try {
       if (actualUpdatedFields.length > 0) {
-        await updateRaffle(data.id, raffleDataForDb);
-        await addActivityLog({
-          adminUsername: currentUser.username,
-          actionType: 'RAFFLE_EDITED',
-          targetInfo: `Rifa: ${data.name}`,
-          details: { 
-            raffleId: data.id, 
-            raffleName: data.name,
-            updatedFields: actualUpdatedFields, 
-          }
-        });
+        await updateRaffle(data.id, raffleDataForDb, currentUser);
         toast({
           title: "Rifa Actualizada",
           description: `La rifa "${data.name}" ha sido guardada exitosamente.`,
@@ -303,13 +373,12 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
         });
       }
 
-
       const updatedRaffleData: Raffle = {
-        ...raffle, // original raffle data
-        ...raffleDataForDb, // applied updates
-        id: data.id, // ensure id is correct
-        creatorUsername: raffle.creatorUsername, // ensure original creator is kept
-        soldNumbers: raffle.soldNumbers, // ensure original soldNumbers are kept
+        ...raffle,
+        ...raffleDataForDb,
+        id: data.id,
+        creatorUsername: raffle.creatorUsername,
+        soldNumbers: raffle.soldNumbers,
         lotteryName: raffleDataForDb.lotteryName,
         drawTime: raffleDataForDb.drawTime,
         acceptedPaymentMethods: acceptedPaymentMethodsResult,
@@ -317,16 +386,20 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
 
       if (onSuccess) onSuccess(updatedRaffleData);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating raffle in Firestore:", error);
-      toast({ title: "Error de Guardado", description: "No se pudo actualizar la rifa en Firestore.", variant: "destructive" });
+       if (error.message.includes("plan actual no permite editar") || error.message.includes("permiso para editar esta rifa") || error.message.includes("alcanzado el límite de ediciones")) {
+        setIsPlanLimitDialogOpen(true);
+      } else {
+        toast({ title: "Error de Guardado", description: error.message || "No se pudo actualizar la rifa en Firestore.", variant: "destructive" });
+      }
     } finally {
       setIsLoading(false);
     }
   };
-  
+
   const renderPaymentMethodCheckbox = (
-    idsField: any, 
+    idsField: any,
     method: { id: string; name: string; detailType?: string; fields?: any[]; placeholder?: string },
     formPrefix: string
   ) => {
@@ -351,14 +424,14 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
             {method.detailType === 'specificFields' && method.fields?.map(field => (
               <div key={field.id}>
                 <Label htmlFor={`${formPrefix}${method.id}-${field.id}`} className="text-xs text-muted-foreground">{field.label}</Label>
-                <Input 
-                  id={`${formPrefix}${method.id}-${field.id}`} 
-                  {...register(`paymentMethodDetails.${method.id}_${field.id}` as any)} 
+                <Input
+                  id={`${formPrefix}${method.id}-${field.id}`}
+                  {...register(`paymentMethodDetails.${method.id}_${field.id}` as any)}
                   placeholder={field.placeholder}
                   className="h-8 text-xs"
                   maxLength={field.maxLength}
                 />
-                 {errors.paymentMethodDetails?.[`${method.id}_${field.id}` as keyof typeof errors.paymentMethodDetails] && 
+                 {errors.paymentMethodDetails?.[`${method.id}_${field.id}` as keyof typeof errors.paymentMethodDetails] &&
                   <p className="text-xs text-destructive mt-0.5">{(errors.paymentMethodDetails?.[`${method.id}_${field.id}` as keyof typeof errors.paymentMethodDetails] as any)?.message}</p>
                 }
               </div>
@@ -366,15 +439,15 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
             {method.detailType === 'generic' && (
                <div>
                 <Label htmlFor={`${formPrefix}${method.id}-details`} className="text-xs text-muted-foreground">Detalles para {method.name}</Label>
-                <Textarea 
-                  id={`${formPrefix}${method.id}-details`} 
-                  {...register(`paymentMethodDetails.${method.id}_details` as any)} 
-                  placeholder={method.placeholder} 
+                <Textarea
+                  id={`${formPrefix}${method.id}-details`}
+                  {...register(`paymentMethodDetails.${method.id}_details` as any)}
+                  placeholder={method.placeholder}
                   className="text-xs min-h-[60px]"
                   rows={2}
                   maxLength={150}
                 />
-                 {errors.paymentMethodDetails?.[`${method.id}_details` as keyof typeof errors.paymentMethodDetails] && 
+                 {errors.paymentMethodDetails?.[`${method.id}_details` as keyof typeof errors.paymentMethodDetails] &&
                   <p className="text-xs text-destructive mt-0.5">{(errors.paymentMethodDetails?.[`${method.id}_details` as keyof typeof errors.paymentMethodDetails] as any)?.message}</p>
                 }
               </div>
@@ -382,15 +455,15 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
              {method.detailType === 'freeformText' && method.id === 'otro' && (
               <div>
                 <Label htmlFor={`${formPrefix}otro-description`} className="text-xs text-muted-foreground">Describe tu Otro Método de Pago (Nombre, detalles, etc.)</Label>
-                <Textarea 
-                  id={`${formPrefix}otro-description`} 
-                  {...register('paymentMethodDetails.otro_description')} 
-                  placeholder={method.placeholder} 
+                <Textarea
+                  id={`${formPrefix}otro-description`}
+                  {...register('paymentMethodDetails.otro_description')}
+                  placeholder={method.placeholder}
                   className="text-xs min-h-[70px]"
                   rows={3}
                   maxLength={250}
                 />
-                {errors.paymentMethodDetails?.otro_description && 
+                {errors.paymentMethodDetails?.otro_description &&
                   <p className="text-xs text-destructive mt-0.5">{errors.paymentMethodDetails.otro_description.message}</p>
                 }
               </div>
@@ -418,6 +491,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
   }
 
   return (
+    <>
     <div className="px-1 pt-2 pb-4">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-3 sm:space-y-4">
         <Input type="hidden" {...register("id")} />
@@ -439,7 +513,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="w-20 h-20 sm:w-24 sm:h-24 border border-dashed rounded-md flex items-center justify-center bg-muted/50 overflow-hidden">
               {imagePreview ? (
-                <Image src={imagePreview} alt="Vista previa de la rifa" width={96} height={96} className="object-contain" />
+                <Image src={imagePreview} alt="Vista previa de la rifa" width={96} height={96} className="object-contain" data-ai-hint={effectivePlanDetails.includesCustomImage ? "raffle prize product" : "placeholder generic"} />
               ) : (
                 <ImageIcon className="h-8 w-8 sm:h-10 sm:w-10 text-muted-foreground" />
               )}
@@ -449,7 +523,8 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
                 htmlFor={`${formPrefix}image-upload-input`}
                 className={cn(
                   buttonVariants({ variant: "outline", size: "icon" }),
-                  "cursor-pointer"
+                  "cursor-pointer",
+                  (currentUser?.role !=='founder' && !effectivePlanDetails.includesCustomImage) && "opacity-50 cursor-not-allowed"
                 )}
                 title="Cambiar Imagen"
               >
@@ -462,9 +537,13 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
                 accept="image/png, image/jpeg, image/webp"
                 onChange={handleImageUpload}
                 className="hidden"
+                disabled={currentUser?.role !== 'founder' && !effectivePlanDetails.includesCustomImage}
               />
             </div>
           </div>
+          {(currentUser?.role !== 'founder' && !effectivePlanDetails.includesCustomImage) && (
+            <p className="text-xs text-muted-foreground mt-1">Tu plan actual ({effectivePlanDetails.displayName}) no permite cambiar la imagen. Se mantendrá la imagen actual.</p>
+          )}
           {errors.image && <p className="text-xs text-destructive mt-1">{errors.image.message}</p>}
         </div>
 
@@ -526,10 +605,10 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
            <div>
             <Label htmlFor={`${formPrefix}lotteryName-input`} className="text-xs sm:text-sm">Método de Rifa (Opcional)</Label>
-            <Input 
-              id={`${formPrefix}lotteryName-input`} 
-              {...register("lotteryName")} 
-              placeholder="Ej: Sorteo en vivo, Lotería XYZ" 
+            <Input
+              id={`${formPrefix}lotteryName-input`}
+              {...register("lotteryName")}
+              placeholder="Ej: Sorteo en vivo, Lotería XYZ"
               className="h-9 text-xs sm:text-sm"
             />
             {errors.lotteryName && <p className="text-xs text-destructive mt-1">{errors.lotteryName.message}</p>}
@@ -589,5 +668,12 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
         </Button>
       </form>
     </div>
+    <PlanLimitDialog
+        isOpen={isPlanLimitDialogOpen}
+        onOpenChange={setIsPlanLimitDialogOpen}
+        featureName={isLoading ? "validando plan..." : "editar esta rifa o excediste tu límite de ediciones"}
+    />
+    </>
   );
 }
+

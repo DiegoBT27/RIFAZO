@@ -12,6 +12,8 @@ const fundadorProfileBase = {
   email: 'fundador@rifazo.app',
   bio: 'El creador y fundador de la plataforma RIFAZO. Comprometido con rifas justas y emocionantes.',
   adminPaymentMethodsInfo: 'Acepto todos los métodos de pago principales. ¡Contacta para más detalles!',
+  rafflesCreatedThisPeriod: 0,
+  rafflesEditedThisPeriod: 0, // Added
 };
 
 // Initial platform users to seed Firestore if empty

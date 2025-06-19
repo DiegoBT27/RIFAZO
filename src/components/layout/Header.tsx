@@ -2,9 +2,9 @@
 'use client';
 
 import Link from 'next/link';
-import React, { useState } from 'react'; 
-import { usePathname } from 'next/navigation'; 
-import { Ticket, Trophy, Menu as MenuIcon, LayoutDashboard, LogOut, ShieldCheck, Headset, LogIn, UserCircle, ListChecks, UserPlus, PackageCheck as PackageCheckIcon, Sparkles, DatabaseZap } from 'lucide-react'; 
+import React, { useState, useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation'; 
+import { Ticket, Trophy, Menu as MenuIcon, LogOut, ShieldCheck, Headset, LogIn, UserCircle, UserPlus, Settings, Sun, Moon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -25,41 +25,58 @@ import {
 } from "@/components/ui/sheet";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext'; 
 import { cn } from '@/lib/utils';
+
 
 const ADMIN_WHATSAPP_NUMBER = "584141135956";
 
+interface NavItem {
+  href: string;
+  label: string;
+  icon: JSX.Element;
+  roles?: Array<'user' | 'admin' | 'founder'>; 
+  public?: boolean; 
+}
 
 export default function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const { user, isLoggedIn, logout, isLoading } = useAuth();
+  const { user, isLoggedIn, logout, isLoading: authIsLoading } = useAuth();
+  const { theme, toggleTheme } = useTheme(); 
   const pathname = usePathname();
+  const router = useRouter();
+
+
+  if (authIsLoading) return null;
+
+  const allNavItems: NavItem[] = [
+    { href: "/", label: "Rifas", icon: <Ticket />, public: true },
+    { href: "/results", label: "Resultados", icon: <Trophy />, public: true },
+    { href: "/plans", label: "Planes", icon: <ShieldCheck />, public: true },
+    { href: "/my-participations", label: "Mis Boletos", icon: <Ticket />, roles: ['user', 'admin', 'founder'] },
+    { 
+      href: "/admin", 
+      label: "Panel de Administrador", 
+      icon: <Settings />, 
+      roles: ['admin', 'founder'] 
+    },
+  ];
   
-
-  if (isLoading) return null;
-
-
-  const baseNavItems = [];
-  baseNavItems.push({ href: "/", label: "Rifas", icon: <Ticket /> });
-  baseNavItems.push({ href: "/results", label: "Resultados", icon: <Trophy /> });
-
-  const userSpecificNavItems = [];
-  if (isLoggedIn && user) {
-    userSpecificNavItems.push({ href: "/my-participations", label: "Mis Boletos", icon: <Ticket /> }); 
-
-    if (user.role === 'admin' || user.role === 'founder') {
-      userSpecificNavItems.push({ href: "/admin/my-raffles", label: "Mis Rifas", icon: <ListChecks /> });
-      userSpecificNavItems.push({ href: "/admin/payment-confirmation", label: "Confirmar Pagos", icon: <PackageCheckIcon /> });
-      userSpecificNavItems.push({ href: "/admin", label: user.role === 'admin' ? "Panel Admin" : "Panel Fundador", icon: user.role === 'admin' ? <LayoutDashboard /> : <ShieldCheck /> });
-      // Link to Dev Tools removed
+  const getVisibleNavItems = () => {
+    if (pathname === '/login' || pathname === '/register') {
+      return isLoggedIn
+        ? allNavItems.filter(item => item.roles && user && item.roles.includes(user.role) && !item.public)
+        : allNavItems.filter(item => item.href === '/plans'); 
     }
-  }
 
-  let finalNavItems = [...baseNavItems, ...userSpecificNavItems];
-  if (pathname === '/login' || pathname === '/register') {
-    finalNavItems = isLoggedIn ? userSpecificNavItems : [];
-  }
+    return allNavItems.filter(item => {
+      if (item.public) return true;
+      if (isLoggedIn && user && item.roles?.includes(user.role)) return true;
+      return false;
+    });
+  };
 
+  const visibleNavItems = getVisibleNavItems();
 
   const supportButtonDesktop = (
     <Button variant="ghost" size="icon" asChild title="Soporte">
@@ -78,18 +95,25 @@ export default function Header() {
       </a>
     </SheetClose>
   );
+  
+  const themeToggleButton = (
+     <Button variant="ghost" size="icon" onClick={toggleTheme} title={theme === 'light' ? 'Activar Modo Oscuro' : 'Activar Modo Claro'}>
+      {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+      <span className="sr-only">Cambiar tema</span>
+    </Button>
+  );
+  
 
   return (
     <header className="bg-card text-card-foreground shadow-md border-b sticky top-0 z-50">
       <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-        <Link href="/" className="text-xl sm:text-2xl font-headline font-bold flex items-center text-primary" onClick={() => setIsMobileMenuOpen(false)}>
-           <Sparkles className="mr-2 h-5 sm:h-6 w-5 sm:h-6 text-accent animate-pulse-slight" />
+        <Link href="/" className="text-xl sm:text-2xl font-headline font-bold text-foreground" onClick={() => setIsMobileMenuOpen(false)}>
           RIFAZO
         </Link>
 
-        {!isLoading && (
+        {!authIsLoading && (
         <nav className="hidden md:flex items-center space-x-1">
-          {finalNavItems.map(item => (
+          {visibleNavItems.map(item => (
              <Button
               key={item.href}
               variant="ghost"
@@ -99,12 +123,14 @@ export default function Header() {
               className={cn(pathname === item.href && "bg-accent text-accent-foreground hover:bg-accent/90")}
              >
               <Link href={item.href}>
-                {item.icon}
+                {React.cloneElement(item.icon, { className: "h-5 w-5"})}
               </Link>
             </Button>
           ))}
-
+          
+          <div className="ml-1">{themeToggleButton}</div>
           <div className="ml-1">{supportButtonDesktop}</div>
+
 
           {!isLoggedIn && pathname !== '/login' && pathname !== '/register' && (
              <Button variant="outline" size="sm" asChild className="h-8 px-3 text-xs ml-1">
@@ -113,7 +139,7 @@ export default function Header() {
               </Link>
             </Button>
           )}
-           {!isLoggedIn && pathname !== '/login' && (
+           {!isLoggedIn && pathname !== '/login' && pathname !== '/register' && (
              <Button variant="default" size="sm" asChild className="h-8 px-3 text-xs ml-1">
               <Link href="/login">
                 <LogIn className="mr-1.5 h-4 w-4"/> Iniciar Sesión
@@ -121,8 +147,7 @@ export default function Header() {
             </Button>
           )}
 
-
-          {isLoggedIn && user ? (
+          {isLoggedIn && user && (
              <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" title={`Mi Cuenta: ${user.username} (${user.role})`}>
@@ -138,11 +163,12 @@ export default function Header() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          ) : null}
+          )}
         </nav>
         )}
 
-        <div className="md:hidden flex items-center">
+        <div className="md:hidden flex items-center space-x-1">
+          <div className="ml-1">{themeToggleButton}</div>
           <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" className="relative">
@@ -154,8 +180,7 @@ export default function Header() {
               <SheetHeader className="p-4 border-b">
                  <SheetTitle className="text-left">
                   <SheetClose asChild>
-                    <Link href="/" className="text-xl sm:text-2xl font-headline font-bold flex items-center text-primary" onClick={() => setIsMobileMenuOpen(false)}>
-                       <Sparkles className="mr-2 h-5 sm:h-6 w-5 sm:h-6 text-accent animate-pulse-slight" />
+                    <Link href="/" className="text-xl sm:text-2xl font-headline font-bold text-foreground" onClick={() => setIsMobileMenuOpen(false)}>
                       RIFAZO
                     </Link>
                   </SheetClose>
@@ -165,11 +190,11 @@ export default function Header() {
 
               <ScrollArea className="flex-grow">
                   <nav className="flex flex-col p-4 space-y-1">
-                      {finalNavItems.map(item => (
+                      {visibleNavItems.map(item => (
                         <SheetClose key={item.label} asChild>
                           <Link href={item.href} onClick={() => setIsMobileMenuOpen(false)}>
-                            <Button 
-                              variant="ghost" 
+                            <Button
+                              variant="ghost"
                               className={cn(
                                 "w-full justify-start text-sm py-2.5",
                                 pathname === item.href && "bg-accent text-accent-foreground hover:bg-accent/90"
@@ -204,7 +229,7 @@ export default function Header() {
                     </div>
                   </>
                 ) : (
-                   !isLoading &&
+                   !authIsLoading &&
                   <div className="p-4 border-t space-y-2">
                     {pathname !== '/register' && (
                       <SheetClose asChild>

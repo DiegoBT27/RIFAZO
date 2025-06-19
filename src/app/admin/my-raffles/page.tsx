@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import SectionTitle from '@/components/shared/SectionTitle';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, ListChecks, Edit, AlertCircle, Inbox, PackagePlus, Trash2, Trophy, CalendarCheck2, AlertTriangle, Phone } from 'lucide-react';
+import { Loader2, ListChecks, Edit, AlertCircle, Inbox, PackagePlus, Trash2, Trophy, CalendarCheck2, AlertTriangle, Phone, ShieldAlert } from 'lucide-react';
 import type { Raffle } from '@/types';
 import { getRaffles, deleteRaffleAndParticipations, addActivityLog, getRaffleById } from '@/lib/firebase/firestoreService';
 import { useToast } from '@/hooks/use-toast';
@@ -25,6 +25,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import RegisterWinnerDialog from '@/components/admin/RegisterWinnerDialog';
+import PlanLimitDialog from '@/components/admin/PlanLimitDialog';
+import { getPlanDetails } from '@/lib/config/plans'; 
 
 export default function MyRafflesPage() {
   const { user, isLoggedIn, isLoading: authIsLoading } = useAuth();
@@ -35,16 +37,8 @@ export default function MyRafflesPage() {
 
   const [isWinnerDialogOpen, setIsWinnerDialogOpen] = useState(false);
   const [selectedRaffleForWinner, setSelectedRaffleForWinner] = useState<Raffle | null>(null);
-
-  useEffect(() => {
-    if (!authIsLoading) {
-      if (!isLoggedIn) {
-        router.replace('/login');
-      } else if (user?.role !== 'admin' && user?.role !== 'founder') {
-        router.replace('/');
-      }
-    }
-  }, [isLoggedIn, user, authIsLoading, router]);
+  const [isPlanLimitDialogOpen, setIsPlanLimitDialogOpen] = useState(false);
+  const [planLimitFeatureName, setPlanLimitFeatureName] = useState("esta acción");
 
   const fetchMyRaffles = useCallback(async () => {
     if (!isLoggedIn || !user || (user.role !== 'admin' && user.role !== 'founder')) {
@@ -144,6 +138,39 @@ export default function MyRafflesPage() {
     return <Badge variant="outline" className="text-xs">Desconocido</Badge>;
   };
 
+  const handleEditRaffleClick = (raffleId: string) => {
+    if (!user) return;
+    const isFounder = user.role === 'founder';
+    const targetRaffle = myRaffles.find(r => r.id === raffleId);
+    const isAdminCreator = user.role === 'admin' && targetRaffle?.creatorUsername === user.username;
+    const planDetails = getPlanDetails(user.planActive ? user.plan : null);
+
+    if (isFounder) {
+        router.push(`/admin/my-raffles/${raffleId}/edit`);
+        return;
+    }
+    
+    if (isAdminCreator) {
+        if (planDetails.canEditRaffles === true) {
+            router.push(`/admin/my-raffles/${raffleId}/edit`);
+            return;
+        } else if (planDetails.canEditRaffles === 'limited') {
+            if ((user.rafflesEditedThisPeriod || 0) < (planDetails.editRaffleLimit || Infinity)) {
+                router.push(`/admin/my-raffles/${raffleId}/edit`);
+                return;
+            } else {
+                setPlanLimitFeatureName(`editar más de ${planDetails.editRaffleLimit} rifas`);
+                setIsPlanLimitDialogOpen(true);
+                return;
+            }
+        }
+    }
+    
+    // Default to plan limit dialog if not founder and no other condition met
+    setPlanLimitFeatureName("editar rifas");
+    setIsPlanLimitDialogOpen(true);
+  };
+
 
   if (authIsLoading || pageIsLoading) {
     return (
@@ -167,7 +194,7 @@ export default function MyRafflesPage() {
   return (
     <div>
       <SectionTitle>
-        {user.role === 'founder' ? 'Gestionar Todas las Rifas' : 'Mis Rifas Creadas'}
+        {user?.role === 'founder' ? 'Gestionar Todas las Rifas' : 'Mis Rifas Creadas'}
       </SectionTitle>
       
       <div className="mb-6 flex justify-end">
@@ -187,7 +214,26 @@ export default function MyRafflesPage() {
             const drawDateHasPassed = drawDateObj < today;
             
             const canRegisterWinner = (drawDateHasPassed || raffle.status === 'pending_draw') && raffle.status !== 'completed' && raffle.status !== 'cancelled';
-            const canEditRaffle = raffle.status !== 'completed' && raffle.status !== 'cancelled';
+            
+            const isFounder = user?.role === 'founder';
+            const isAdminCreator = user?.role === 'admin' && raffle.creatorUsername === user?.username;
+            let canEditThisRaffle = false;
+            const planDetails = getPlanDetails(user?.planActive ? user?.plan : null);
+
+            if (isFounder) {
+                canEditThisRaffle = true;
+            } else if (isAdminCreator) {
+                if (planDetails.canEditRaffles === true) {
+                    canEditThisRaffle = true;
+                } else if (planDetails.canEditRaffles === 'limited') {
+                    canEditThisRaffle = (user?.rafflesEditedThisPeriod || 0) < (planDetails.editRaffleLimit || Infinity);
+                }
+            }
+            if (raffle.status === 'completed' || raffle.status === 'cancelled') {
+                canEditThisRaffle = false; // Cannot edit completed or cancelled raffles
+            }
+
+
             const canDeleteRaffle = 
               (user?.role === 'founder') || 
               (user?.role === 'admin' && raffle.creatorUsername === user?.username && raffle.status !== 'completed' && raffle.status !== 'cancelled');
@@ -214,7 +260,7 @@ export default function MyRafflesPage() {
                         <p className="font-medium text-green-700">
                             Nro. Ganador: {raffle.winningNumber != null ? String(raffle.winningNumber) : <span className="italic text-muted-foreground">Pendiente</span>}
                         </p>
-                        { (raffle.winningNumber != null) &&
+                        {raffle.winningNumber != null ? (
                           <>
                             <p className="text-muted-foreground">
                                 Ganador: {raffle.winnerName || <span className="italic">No registrado</span>}
@@ -224,10 +270,9 @@ export default function MyRafflesPage() {
                                 Tel: {raffle.winnerPhone || <span className="italic">No registrado</span>}
                             </p>
                           </>
-                        }
-                        { raffle.winningNumber == null &&
+                        ) : (
                             <p className="text-muted-foreground italic">Resultado pendiente de registro completo.</p>
-                        }
+                        )}
                     </div>
                 )}
               </CardHeader>
@@ -236,12 +281,28 @@ export default function MyRafflesPage() {
               </CardContent>
               <CardFooter className="p-4 flex flex-col space-y-2">
                 <div className="w-full flex space-x-2">
-                    {canEditRaffle && (
-                    <Button asChild variant="outline" size="sm" className="flex-1 text-xs h-8">
-                        <Link href={`/admin/my-raffles/${raffle.id}/edit`}>
-                        <Edit className="mr-2 h-3.5 w-3.5" /> Editar
-                        </Link>
-                    </Button>
+                    {canEditThisRaffle ? (
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="flex-1 text-xs h-8" 
+                            onClick={() => handleEditRaffleClick(raffle.id)}
+                        >
+                            <Edit className="mr-2 h-3.5 w-3.5" /> Editar
+                        </Button>
+                    ) : (
+                        // Show disabled button if admin creator but plan doesn't allow or limit reached, or if raffle is completed/cancelled
+                        isAdminCreator && raffle.status !== 'completed' && raffle.status !== 'cancelled' &&
+                        <Button variant="outline" size="sm" className="flex-1 text-xs h-8" 
+                                onClick={() => handleEditRaffleClick(raffle.id)} // Still call to trigger PlanLimitDialog
+                                disabled={!isFounder && (!planDetails.canEditRaffles || (planDetails.canEditRaffles === 'limited' && (user?.rafflesEditedThisPeriod || 0) >= (planDetails.editRaffleLimit || Infinity)))}
+                                title={
+                                    (!planDetails.canEditRaffles || (planDetails.canEditRaffles === 'limited' && (user?.rafflesEditedThisPeriod || 0) >= (planDetails.editRaffleLimit || Infinity))) 
+                                    ? "Límite de edición alcanzado o plan no lo permite." 
+                                    : (raffle.status === 'completed' || raffle.status === 'cancelled' ? "No se puede editar una rifa finalizada." : "Editar")
+                                }>
+                            <ShieldAlert className="mr-2 h-3.5 w-3.5 text-muted-foreground/70" /> Editar (Plan Req.)
+                        </Button>
                     )}
                     {canRegisterWinner && (
                     <Button variant="default" size="sm" className="flex-1 bg-green-600 hover:bg-green-700 text-white text-xs h-8" onClick={() => handleOpenWinnerDialog(raffle)}>
@@ -284,7 +345,7 @@ export default function MyRafflesPage() {
         <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
           <Inbox className="h-16 w-16 mx-auto text-muted-foreground/70 mb-4" />
           <p className="text-xl font-semibold text-muted-foreground">
-            {user.role === 'founder' ? 'No hay rifas en la plataforma.' : 'Aún no has creado ninguna rifa.'}
+            {user?.role === 'founder' ? 'No hay rifas en la plataforma.' : 'Aún no has creado ninguna rifa.'}
           </p>
           <p className="text-sm text-muted-foreground mt-1">
             ¡Haz clic en "Crear Nueva Rifa" para empezar!
@@ -302,6 +363,11 @@ export default function MyRafflesPage() {
           }}
         />
       )}
+      <PlanLimitDialog 
+        isOpen={isPlanLimitDialogOpen} 
+        onOpenChange={setIsPlanLimitDialogOpen}
+        featureName={planLimitFeatureName}
+      />
     </div>
   );
 }

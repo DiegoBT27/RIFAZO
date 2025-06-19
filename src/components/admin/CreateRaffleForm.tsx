@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, type ChangeEvent } from 'react';
+import { useState, type ChangeEvent, useEffect } from 'react';
 import { useForm, type SubmitHandler, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -25,9 +25,11 @@ import {
 } from "@/components/ui/select";
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Raffle, AcceptedPaymentMethod } from '@/types';
+import type { Raffle, AcceptedPaymentMethod, ManagedUser } from '@/types';
 import { AVAILABLE_PAYMENT_METHODS } from '@/lib/payment-methods';
 import { DRAW_TIMES } from '@/lib/lottery-data';
+import { getPlanDetails } from '@/lib/config/plans'; 
+import PlanLimitDialog from '@/components/admin/PlanLimitDialog'; 
 
 import { CalendarIcon } from 'lucide-react';
 import { Loader2 } from 'lucide-react';
@@ -50,13 +52,16 @@ const tomorrowAtMidnight = new Date();
 tomorrowAtMidnight.setDate(tomorrowAtMidnight.getDate() + 1);
 tomorrowAtMidnight.setHours(0, 0, 0, 0);
 
-const raffleFormSchema = z.object({
+const PLACEHOLDER_IMAGE_URL = "https://placehold.co/800x450.png";
+
+
+const createRaffleFormSchema = (planMaxTickets: number | Infinity, planDisplayName: string, planAllowsCustomImage: boolean) => z.object({
   name: z.string().min(5, { message: "El nombre debe tener al menos 5 caracteres." }),
   description: z.string().min(10, { message: "La descripción debe tener al menos 10 caracteres." }),
   image: z.string().min(1, { message: "Por favor, sube una imagen para la rifa." }),
   prize: z.string().min(3, { message: "El premio debe tener al menos 3 caracteres." }),
   pricePerTicket: z.coerce.number().positive({ message: "El precio debe ser un número positivo." }),
-  totalNumbers: z.coerce.number().int().min(10, { message: "Debe haber al menos 10 números." }).max(500, {message: "Máximo 500 números"}),
+  totalNumbers: z.coerce.number().int().min(10, { message: "Debe haber al menos 10 números." }), 
   drawDate: z.date({ required_error: "La fecha del sorteo es obligatoria."}),
   lotteryName: z.string().optional().nullable(),
   drawTime: z.string().optional().nullable(),
@@ -97,29 +102,53 @@ const raffleFormSchema = z.object({
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "La descripción para 'Otro Método' no debe exceder 250 caracteres.", path: ["paymentMethodDetails.otro_description"]});
     }
   }
+  if (planMaxTickets !== Infinity && data.totalNumbers > planMaxTickets) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Tu plan actual (${planDisplayName}) permite un máximo de ${planMaxTickets} números por rifa.`,
+      path: ["totalNumbers"],
+    });
+  }
+  if (!planAllowsCustomImage && data.image && data.image !== PLACEHOLDER_IMAGE_URL) {
+     ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `Tu plan actual (${planDisplayName}) no permite imágenes personalizadas. Se usará una imagen por defecto.`,
+      path: ["image"],
+    });
+  }
 });
 
-
-type RaffleFormValues = z.infer<typeof raffleFormSchema>;
+type RaffleFormValues = z.infer<ReturnType<typeof createRaffleFormSchema>>;
 
 interface CreateRaffleFormProps {
   onSuccess?: (newRaffle: Raffle) => void;
 }
 
+
 export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [isPlanLimitDialogOpen, setIsPlanLimitDialogOpen] = useState(false);
   const formPrefix = 'create-';
 
+  const planDetails = getPlanDetails(currentUser?.planActive ? currentUser?.plan : null);
+  const [imagePreview, setImagePreview] = useState<string | null>(planDetails.includesCustomImage ? null : PLACEHOLDER_IMAGE_URL);
+
+  const currentRaffleFormSchema = createRaffleFormSchema(
+    currentUser?.role === 'founder' ? Infinity : planDetails.maxTicketsPerRaffle,
+    planDetails.displayName,
+    currentUser?.role === 'founder' ? true : planDetails.includesCustomImage
+  );
+
+
   const { register, handleSubmit, control, reset, setValue, watch, formState: { errors } } = useForm<RaffleFormValues>({
-    resolver: zodResolver(raffleFormSchema),
+    resolver: zodResolver(currentRaffleFormSchema),
     defaultValues: {
       name: '',
       description: '',
-      image: '',
+      image: planDetails.includesCustomImage ? '' : PLACEHOLDER_IMAGE_URL,
       prize: '',
       pricePerTicket: 1,
       totalNumbers: 100,
@@ -136,13 +165,34 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
       }
     }
   });
+   useEffect(() => {
+    // Ensure image field and preview are set correctly based on plan when component mounts or planDetails change
+    if (!planDetails.includesCustomImage) {
+      setValue('image', PLACEHOLDER_IMAGE_URL, { shouldValidate: true });
+      setImagePreview(PLACEHOLDER_IMAGE_URL);
+    } else {
+      // If plan allows, and current image value is placeholder, clear it for user input
+      if (watch('image') === PLACEHOLDER_IMAGE_URL) {
+        setValue('image', '', { shouldValidate: true });
+        setImagePreview(null);
+      } else {
+        setImagePreview(watch('image'));
+      }
+    }
+  }, [planDetails.includesCustomImage, setValue, watch]);
+
 
   const selectedPaymentMethodIds = watch("selectedPaymentMethodIds");
 
   const handleImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    if (currentUser?.role !== 'founder' && !planDetails.includesCustomImage) {
+      toast({ title: "Plan Limitado", description: "Tu plan actual no permite imágenes personalizadas.", variant: "destructive" });
+      event.target.value = ''; // Clear the input if any file was selected
+      return;
+    }
     const file = event.target.files?.[0];
     if (file) {
-      if (file.size > 700 * 1024) { // 700KB limit
+      if (file.size > 700 * 1024) { 
         toast({
           title: "Archivo Demasiado Grande",
           description: "La imagen no debe exceder los 700KB.",
@@ -159,24 +209,37 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
       };
       reader.readAsDataURL(file);
     } else {
-      setImagePreview(null);
-      setValue('image', '', { shouldValidate: true });
+      setImagePreview(planDetails.includesCustomImage ? null : PLACEHOLDER_IMAGE_URL);
+      setValue('image', planDetails.includesCustomImage ? '' : PLACEHOLDER_IMAGE_URL, { shouldValidate: true });
     }
   };
 
   const onSubmit: SubmitHandler<RaffleFormValues> = async (data) => {
     setIsLoading(true);
 
-    if (!currentUser?.username) {
+    if (!currentUser?.username || !currentUser.id ) {
       toast({ title: "Error de Autenticación", description: "No se pudo identificar al creador de la rifa.", variant: "destructive" });
       setIsLoading(false);
       return;
     }
-    if (!data.image) {
-      toast({ title: "Error de Formulario", description: "Por favor, sube una imagen para la rifa.", variant: "destructive" });
+    
+    const currentPlanIsFounderOrAllowsCustomImage = currentUser.role === 'founder' || planDetails.includesCustomImage;
+    const finalImage = currentPlanIsFounderOrAllowsCustomImage ? data.image : PLACEHOLDER_IMAGE_URL;
+
+    if (!finalImage) { // This check is now more about Zod requirement if plan doesn't allow and placeholder wasn't set
+        toast({ title: "Error de Formulario", description: "Por favor, sube una imagen para la rifa o asegúrate de que se asigne una por defecto.", variant: "destructive" });
+        setIsLoading(false);
+        return;
+    }
+
+
+    const rafflesCreated = currentUser.rafflesCreatedThisPeriod || 0;
+    if (currentUser.role !== 'founder' && rafflesCreated >= planDetails.raffleLimit) {
+      setIsPlanLimitDialogOpen(true);
       setIsLoading(false);
       return;
     }
+
 
     const acceptedPaymentMethods: AcceptedPaymentMethod[] = data.selectedPaymentMethodIds
       .map(id => {
@@ -206,7 +269,7 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
     const raffleDataForDb: Omit<Raffle, 'id' | 'soldNumbers' | 'effectiveSoldNumbers'> = {
       name: data.name,
       description: data.description,
-      image: data.image,
+      image: finalImage,
       prize: data.prize,
       pricePerTicket: data.pricePerTicket,
       totalNumbers: data.totalNumbers,
@@ -218,28 +281,14 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
     };
 
     try {
-      const newRaffle = await addRaffle(raffleDataForDb);
-      await addActivityLog({
-        adminUsername: currentUser.username,
-        actionType: 'RAFFLE_CREATED',
-        targetInfo: `Rifa: ${newRaffle.name}`,
-        details: { 
-          raffleId: newRaffle.id, 
-          raffleName: newRaffle.name,
-          prize: newRaffle.prize,
-          pricePerTicket: newRaffle.pricePerTicket,
-          totalNumbers: newRaffle.totalNumbers,
-          drawDate: newRaffle.drawDate,
-          lotteryName: newRaffle.lotteryName,
-          drawTime: newRaffle.drawTime,
-        }
-      });
+      const newRaffle = await addRaffle(raffleDataForDb, currentUser as ManagedUser); 
       toast({
         title: "Rifa Creada Exitosamente",
         description: `La rifa "${newRaffle.name}" ha sido guardada en Firestore.`,
       });
       reset();
-      setImagePreview(null);
+      setImagePreview(planDetails.includesCustomImage ? null : PLACEHOLDER_IMAGE_URL);
+      setValue('image', planDetails.includesCustomImage ? '' : PLACEHOLDER_IMAGE_URL);
       setValue('selectedPaymentMethodIds', []);
       setValue('lotteryName', null);
       setValue('drawTime', 'unspecified_time');
@@ -251,9 +300,13 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
         otro_description: '',
       });
       if (onSuccess) onSuccess(newRaffle);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving raffle to Firestore:", error);
-      toast({ title: "Error de Guardado", description: "No se pudo guardar la rifa en Firestore.", variant: "destructive" });
+      if (error.message.includes("Límite de creación de rifas alcanzado")) {
+        setIsPlanLimitDialogOpen(true);
+      } else {
+        toast({ title: "Error de Guardado", description: error.message || "No se pudo guardar la rifa en Firestore.", variant: "destructive" });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -337,6 +390,7 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
 
 
   return (
+    <>
     <div className="px-1 pt-2 pb-4">
       <h3 className="font-headline text-lg sm:text-xl mb-1">Detalles de la Nueva Rifa</h3>
       <p className="text-xs text-muted-foreground mb-3 sm:mb-4">Completa la información para crear una nueva rifa.</p>
@@ -359,7 +413,7 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="w-20 h-20 sm:w-24 sm:h-24 border border-dashed rounded-md flex items-center justify-center bg-muted/50 overflow-hidden">
               {imagePreview ? (
-                <Image src={imagePreview} alt="Vista previa" width={96} height={96} className="object-contain" />
+                <Image src={imagePreview} alt="Vista previa" width={96} height={96} className="object-contain" data-ai-hint={planDetails.includesCustomImage ? "raffle prize product" : "placeholder generic"} />
               ) : (
                 <ImageIcon className="h-8 w-8 sm:h-10 sm:w-10 text-muted-foreground" />
               )}
@@ -369,7 +423,8 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
                 htmlFor={`${formPrefix}image-upload-input`}
                 className={cn(
                   buttonVariants({ variant: "outline", size: "icon" }),
-                  "cursor-pointer"
+                  "cursor-pointer",
+                  (currentUser?.role !== 'founder' && !planDetails.includesCustomImage) && "opacity-50 cursor-not-allowed"
                 )}
                 title="Subir Imagen"
               >
@@ -382,9 +437,13 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
                 accept="image/png, image/jpeg, image/webp"
                 onChange={handleImageUpload}
                 className="hidden"
+                disabled={currentUser?.role !== 'founder' && !planDetails.includesCustomImage}
               />
             </div>
           </div>
+          {!(currentUser?.role === 'founder' || planDetails.includesCustomImage) && (
+            <p className="text-xs text-muted-foreground mt-1">Tu plan actual ({planDetails.displayName}) no incluye imágenes personalizadas. Se usará una imagen por defecto.</p>
+          )}
           {errors.image && <p className="text-xs text-destructive mt-1">{errors.image.message}</p>}
         </div>
 
@@ -509,7 +568,11 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
         </Button>
       </form>
     </div>
+    <PlanLimitDialog 
+        isOpen={isPlanLimitDialogOpen} 
+        onOpenChange={setIsPlanLimitDialogOpen}
+        featureName="crear más rifas"
+    />
+    </>
   );
 }
-
-    

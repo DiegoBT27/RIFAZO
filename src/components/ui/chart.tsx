@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -141,10 +142,16 @@ const ChartTooltipContent = React.forwardRef<
       const [item] = payload
       const key = `${labelKey || item.dataKey || item.name || "value"}`
       const itemConfig = getPayloadConfigFromPayload(config, item, key)
-      const value =
+      let value =
         !labelKey && typeof label === "string"
           ? config[label as keyof typeof config]?.label || label
           : itemConfig?.label
+
+      // Use dataKey as label if it's explicitly provided and no other label is found
+      if (!value && item.dataKey) {
+        value = item.dataKey;
+      }
+
 
       if (labelFormatter) {
         return (
@@ -192,7 +199,7 @@ const ChartTooltipContent = React.forwardRef<
 
             return (
               <div
-                key={item.dataKey}
+                key={item.dataKey || item.name || index} // Ensure unique key
                 className={cn(
                   "flex w-full flex-wrap items-stretch gap-2 [&>svg]:h-2.5 [&>svg]:w-2.5 [&>svg]:text-muted-foreground",
                   indicator === "dot" && "items-center"
@@ -235,7 +242,7 @@ const ChartTooltipContent = React.forwardRef<
                       <div className="grid gap-1.5">
                         {nestLabel ? tooltipLabel : null}
                         <span className="text-muted-foreground">
-                          {itemConfig?.label || item.name}
+                          {itemConfig?.label || item.name || item.dataKey} {/* Fallback to item.name or item.dataKey */}
                         </span>
                       </div>
                       {item.value && (
@@ -299,14 +306,16 @@ const ChartLegendContent = React.forwardRef<
               {itemConfig?.icon && !hideIcon ? (
                 <itemConfig.icon />
               ) : (
-                <div
-                  className="h-2 w-2 shrink-0 rounded-[2px]"
-                  style={{
-                    backgroundColor: item.color,
-                  }}
-                />
+                !hideIcon && ( // Ensure icon is not hidden before rendering div
+                  <div
+                    className="h-2 w-2 shrink-0 rounded-[2px]"
+                    style={{
+                      backgroundColor: item.color,
+                    }}
+                  />
+                )
               )}
-              {itemConfig?.label}
+              {itemConfig?.label || item.value} {/* Fallback to item.value for label */}
             </div>
           )
         })}

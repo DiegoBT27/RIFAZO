@@ -1,4 +1,5 @@
 
+
 import { db } from './config';
 import {
   collection,
@@ -17,16 +18,33 @@ import {
   limit,
   Timestamp,
   runTransaction,
+  increment,
 } from 'firebase/firestore';
-import type { Raffle, ManagedUser, Participation, RaffleResult, ActivityLog, Rating } from '@/types';
-// initialPlatformUsers import removed as it's no longer used here
+import type { Raffle, ManagedUser, Participation, RaffleResult, ActivityLog, Rating, PlanName } from '@/types';
+import { PLAN_CONFIG, getPlanDetails } from '@/lib/config/plans';
 
-// Users Collection
+
 const usersCollection = collection(db, 'users');
+const rafflesCollection = collection(db, 'raffles');
+const participationsCollection = collection(db, 'participations');
+const raffleResultsCollection = collection(db, 'raffleResults');
+const activityLogsCollection = collection(db, 'activityLogs');
+const ratingsCollection = collection(db, 'ratings');
 
+
+// User Functions
 export const getUsers = async (): Promise<ManagedUser[]> => {
   const snapshot = await getDocs(usersCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ManagedUser));
+};
+
+export const getUserById = async (userId: string): Promise<ManagedUser | null> => {
+  const userDoc = doc(db, 'users', userId);
+  const snapshot = await getDoc(userDoc);
+  if (snapshot.exists()) {
+    return { id: snapshot.id, ...snapshot.data() } as ManagedUser;
+  }
+  return null;
 };
 
 export const getUserByUsername = async (username: string): Promise<ManagedUser | null> => {
@@ -42,14 +60,34 @@ export const getUserByUsername = async (username: string): Promise<ManagedUser |
 export const addUser = async (userData: Omit<ManagedUser, 'id'>): Promise<ManagedUser> => {
   const dataToSave: { [key: string]: any } = {
     username: userData.username,
-    password: userData.password, 
+    password: userData.password,
     role: userData.role || 'user',
     isBlocked: userData.isBlocked || false,
-    averageRating: 0, // Initialize rating fields
-    ratingCount: 0,   // Initialize rating fields
+    averageRating: 0,
+    ratingCount: 0,
+    plan: null,
+    planActive: false,
+    planStartDate: null,
+    planEndDate: null,
+    planAssignedBy: null,
+    rafflesCreatedThisPeriod: 0,
+    rafflesEditedThisPeriod: 0, // Added
   };
 
-  const optionalFields: (keyof Omit<ManagedUser, 'id' | 'username' | 'password' | 'role' | 'isBlocked' | 'averageRating' | 'ratingCount'>)[] = [
+  if (userData.role === 'admin' || userData.role === 'founder') {
+      const freePlanDetails = PLAN_CONFIG['free'];
+      const startDate = new Date();
+      const endDate = new Date(startDate);
+      endDate.setDate(startDate.getDate() + freePlanDetails.durationDays);
+
+      dataToSave.plan = 'free';
+      dataToSave.planActive = true;
+      dataToSave.planStartDate = startDate.toISOString();
+      dataToSave.planEndDate = endDate.toISOString();
+      dataToSave.planAssignedBy = 'system_initial';
+  }
+
+  const optionalFields: (keyof Omit<ManagedUser, 'id' | 'username' | 'password' | 'role' | 'isBlocked' | 'averageRating' | 'ratingCount' | 'plan' | 'planActive' | 'planStartDate' | 'planEndDate' | 'planAssignedBy' | 'rafflesCreatedThisPeriod' | 'rafflesEditedThisPeriod'>)[] = [
     'organizerType', 'fullName', 'companyName', 'rif', 'publicAlias',
     'whatsappNumber', 'locationState', 'locationCity',
     'email', 'bio', 'adminPaymentMethodsInfo'
@@ -60,7 +98,7 @@ export const addUser = async (userData: Omit<ManagedUser, 'id'>): Promise<Manage
       dataToSave[field] = userData[field];
     }
   });
-  
+
   if (userData.publicAlias !== undefined) {
     dataToSave.publicAlias = userData.publicAlias;
   } else if (dataToSave.publicAlias === undefined && dataToSave.role !== 'user' && userData.username) {
@@ -68,27 +106,10 @@ export const addUser = async (userData: Omit<ManagedUser, 'id'>): Promise<Manage
   }
 
   const docRef = await addDoc(usersCollection, dataToSave);
-  // Construct the full ManagedUser object to return, including potentially undefined optional fields
   const savedUser: ManagedUser = {
     id: docRef.id,
-    username: dataToSave.username,
-    password: dataToSave.password, 
-    role: dataToSave.role,
-    isBlocked: dataToSave.isBlocked,
-    organizerType: dataToSave.organizerType, 
-    fullName: dataToSave.fullName,
-    companyName: dataToSave.companyName,
-    rif: dataToSave.rif,
-    publicAlias: dataToSave.publicAlias,
-    whatsappNumber: dataToSave.whatsappNumber,
-    locationState: dataToSave.locationState,
-    locationCity: dataToSave.locationCity,
-    email: dataToSave.email,
-    bio: dataToSave.bio,
-    adminPaymentMethodsInfo: dataToSave.adminPaymentMethodsInfo,
-    averageRating: dataToSave.averageRating,
-    ratingCount: dataToSave.ratingCount,
-  };
+    ...dataToSave
+  } as ManagedUser;
   return savedUser;
 };
 
@@ -100,15 +121,17 @@ export const updateUser = async (userId: string, userData: Partial<ManagedUser>)
     if (Object.prototype.hasOwnProperty.call(userData, key)) {
       const typedKey = key as keyof Partial<ManagedUser>;
       const value = userData[typedKey];
-      
+
       if (typedKey === 'isBlocked') {
         dataToUpdate[typedKey] = value === undefined ? false : value;
       } else if (value !== undefined) {
-        // eslint-disable-next-line @typescript-eslint/no-empty-function
         if (typedKey === 'password' && value === '') {
+          // Skip empty password update
         } else {
           dataToUpdate[typedKey] = value;
         }
+      } else {
+        dataToUpdate[typedKey] = null;
       }
     }
   }
@@ -123,9 +146,103 @@ export const deleteUser = async (userId: string): Promise<void> => {
   await deleteDoc(userDoc);
 };
 
-// Raffles Collection
-const rafflesCollection = collection(db, 'raffles');
 
+export const assignPlanToAdmin = async (
+  adminUserId: string,
+  planName: PlanName,
+  assignerUsername: string,
+  customStartDate?: Date | string | null
+): Promise<void> => {
+  const adminUserDocRef = doc(db, 'users', adminUserId);
+  const planDetails = PLAN_CONFIG[planName];
+
+  if (!planDetails) {
+    throw new Error(`Plan "${planName}" no encontrado en la configuración.`);
+  }
+
+  let effectiveStartDate: Date;
+  let isScheduled = false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); 
+
+  if (customStartDate) {
+    effectiveStartDate = new Date(customStartDate);
+    effectiveStartDate.setHours(0, 0, 0, 0); 
+    if (effectiveStartDate > today) {
+      isScheduled = true;
+    }
+  } else {
+    effectiveStartDate = today;
+  }
+
+  const endDate = new Date(effectiveStartDate);
+  endDate.setDate(effectiveStartDate.getDate() + planDetails.durationDays);
+
+  const planData: Partial<ManagedUser> = {
+    plan: planName,
+    planActive: !isScheduled, 
+    planStartDate: effectiveStartDate.toISOString(),
+    planEndDate: endDate.toISOString(),
+    planAssignedBy: assignerUsername,
+    rafflesCreatedThisPeriod: 0, 
+    rafflesEditedThisPeriod: 0, // Reset edit counter
+  };
+
+  await updateDoc(adminUserDocRef, planData);
+
+  const adminUserSnap = await getDoc(adminUserDocRef);
+  const adminUsername = adminUserSnap.data()?.username || adminUserId;
+
+  await addActivityLog({
+    adminUsername: assignerUsername,
+    actionType: isScheduled ? 'ADMIN_PLAN_SCHEDULED' : 'ADMIN_PLAN_ASSIGNED',
+    targetInfo: `Admin: ${adminUsername}, Plan: ${planDetails.displayName}`,
+    details: {
+      adminUserId,
+      adminUsername,
+      planName: planDetails.displayName,
+      planStartDate: planData.planStartDate,
+      planEndDate: planData.planEndDate,
+      isScheduled
+    }
+  });
+};
+
+export const removeAdminPlan = async (adminUserId: string, removerUsername: string): Promise<void> => {
+  const adminUserDocRef = doc(db, 'users', adminUserId);
+  
+  const adminUserSnap = await getDoc(adminUserDocRef);
+  if (!adminUserSnap.exists()) {
+    throw new Error("Usuario administrador no encontrado.");
+  }
+  const adminData = adminUserSnap.data() as ManagedUser;
+  const oldPlanName = adminData.plan || 'N/A';
+
+  const planUpdateData: Partial<ManagedUser> = {
+    plan: null,
+    planActive: false,
+    planStartDate: null,
+    planEndDate: null,
+    planAssignedBy: removerUsername, 
+    rafflesCreatedThisPeriod: 0,
+    rafflesEditedThisPeriod: 0, // Reset edit counter
+  };
+  await updateDoc(adminUserDocRef, planUpdateData);
+
+  await addActivityLog({
+    adminUsername: removerUsername,
+    actionType: 'ADMIN_PLAN_REMOVED',
+    targetInfo: `Admin: ${adminData.username}, Plan Anterior: ${oldPlanName}`,
+    details: {
+      adminUserId,
+      adminUsername: adminData.username,
+      removedPlan: oldPlanName
+    }
+  });
+};
+
+
+// Raffle Functions
 export const getRaffles = async (): Promise<Raffle[]> => {
   const snapshot = await getDocs(rafflesCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Raffle));
@@ -140,15 +257,86 @@ export const getRaffleById = async (raffleId: string): Promise<Raffle | null> =>
   return null;
 };
 
-export const addRaffle = async (raffleData: Omit<Raffle, 'id' | 'soldNumbers' | 'effectiveSoldNumbers'>): Promise<Raffle> => {
-  const newRaffleData = { ...raffleData, soldNumbers: [], status: 'active' as 'active' | 'pending_draw' | 'completed' | 'cancelled' }; 
+export const addRaffle = async (raffleData: Omit<Raffle, 'id' | 'soldNumbers' | 'effectiveSoldNumbers'>, creator: ManagedUser): Promise<Raffle> => {
+  const newRaffleData = { ...raffleData, soldNumbers: [], status: 'active' as 'active' | 'pending_draw' | 'completed' | 'cancelled' };
   const docRef = await addDoc(rafflesCollection, newRaffleData);
-  return { id: docRef.id, ...newRaffleData } as Raffle;
+  const savedRaffle = { id: docRef.id, ...newRaffleData } as Raffle;
+
+  if (creator.id) {
+    const userDocRef = doc(db, 'users', creator.id);
+    await updateDoc(userDocRef, {
+      rafflesCreatedThisPeriod: increment(1)
+    });
+  }
+
+  await addActivityLog({
+    adminUsername: creator.username,
+    actionType: 'RAFFLE_CREATED',
+    targetInfo: `Rifa: ${savedRaffle.name}`,
+    details: {
+      raffleId: savedRaffle.id,
+      raffleName: savedRaffle.name,
+      prize: savedRaffle.prize,
+    }
+  });
+
+  return savedRaffle;
 };
 
-export const updateRaffle = async (raffleId: string, raffleData: Partial<Raffle>): Promise<void> => {
+export const updateRaffle = async (raffleId: string, raffleData: Partial<Raffle>, editor: ManagedUser): Promise<void> => {
+  if (!editor) {
+    let errorMessage = "Información del editor inválida para actualizar la rifa. El objeto 'editor' es undefined.";
+    console.error(`Error en updateRaffle: ${errorMessage}`);
+    throw new Error(errorMessage);
+  }
+  if (typeof editor.role === 'undefined') {
+    let errorMessage = "Información del editor inválida para actualizar la rifa. 'editor.role' es undefined.";
+    console.error(`Error en updateRaffle: ${errorMessage} Objeto editor:`, JSON.stringify(editor, null, 2));
+    throw new Error(errorMessage);
+  }
+
+  const raffleToEdit = await getRaffleById(raffleId);
+  if (!raffleToEdit) throw new Error("Rifa no encontrada para editar.");
+
+  if (editor.role !== 'founder') {
+    const planDetails = getPlanDetails(editor.planActive ? editor.plan : null);
+    if (planDetails.canEditRaffles === false) {
+      throw new Error(`Tu plan actual (${planDetails.displayName}) no permite editar rifas.`);
+    }
+    if (raffleToEdit.creatorUsername !== editor.username) {
+      throw new Error("No tienes permiso para editar esta rifa porque no eres el creador y no eres fundador.");
+    }
+    if (planDetails.canEditRaffles === 'limited') {
+      if ((editor.rafflesEditedThisPeriod || 0) >= (planDetails.editRaffleLimit || Infinity)) {
+        throw new Error(`Has alcanzado el límite de ${planDetails.editRaffleLimit} ediciones de rifas para tu plan actual (${planDetails.displayName}).`);
+      }
+    }
+  }
+  
   const raffleDoc = doc(db, 'raffles', raffleId);
   await updateDoc(raffleDoc, raffleData);
+
+  // Increment edit count if admin with limited edits and the raffle update was successful
+  if (editor.role === 'admin') {
+    const planDetails = getPlanDetails(editor.planActive ? editor.plan : null);
+    if (planDetails.canEditRaffles === 'limited') {
+        const userDocRef = doc(db, 'users', editor.id);
+        await updateDoc(userDocRef, {
+        rafflesEditedThisPeriod: increment(1)
+        });
+    }
+  }
+
+
+  await addActivityLog({
+    adminUsername: editor.username,
+    actionType: 'RAFFLE_EDITED',
+    targetInfo: `Rifa: ${raffleData.name || raffleToEdit.name}`,
+    details: {
+      raffleId: raffleId,
+      raffleName: raffleData.name || raffleToEdit.name,
+    }
+  });
 };
 
 export const deleteRaffleAndParticipations = async (raffleId: string): Promise<void> => {
@@ -168,20 +356,18 @@ export const deleteRaffleAndParticipations = async (raffleId: string): Promise<v
   resultsSnapshot.forEach(doc => {
     batch.delete(doc.ref);
   });
-  
+
   const ratingsQuery = query(ratingsCollection, where('raffleId', '==', raffleId));
   const ratingsSnapshot = await getDocs(ratingsQuery);
   ratingsSnapshot.forEach(doc => {
     batch.delete(doc.ref);
   });
-
+  
   await batch.commit();
 };
 
 
-// Participations Collection
-const participationsCollection = collection(db, 'participations');
-
+// Participation Functions
 export const getParticipations = async (): Promise<Participation[]> => {
   const snapshot = await getDocs(participationsCollection);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Participation));
@@ -202,12 +388,13 @@ export const getParticipationsByUsername = async (username: string): Promise<Par
 
 export const addParticipation = async (participationData: Omit<Participation, 'id'>): Promise<Participation> => {
   const docRef = await addDoc(participationsCollection, participationData);
-  return { id: docRef.id, ...participationData };
+  const savedParticipation = { id: docRef.id, ...participationData } as Participation;
+  return savedParticipation;
 };
 
 export const updateParticipation = async (participationId: string, participationData: Partial<Participation>): Promise<void> => {
-  const participationDoc = doc(db, 'participations', participationId);
-  await updateDoc(participationDoc, participationData);
+  const participationDocRef = doc(db, 'participations', participationId);
+  await updateDoc(participationDocRef, participationData);
 };
 
 export const deleteParticipation = async (participationId: string): Promise<void> => {
@@ -215,9 +402,8 @@ export const deleteParticipation = async (participationId: string): Promise<void
   await deleteDoc(participationDoc);
 };
 
-// RaffleResults Collection
-const raffleResultsCollection = collection(db, 'raffleResults');
 
+// Raffle Result Functions
 export const addRaffleResult = async (resultData: Omit<RaffleResult, 'id'>): Promise<RaffleResult> => {
   const docRef = await addDoc(raffleResultsCollection, resultData);
   return { id: docRef.id, ...resultData };
@@ -238,9 +424,8 @@ export const getRaffleResultByRaffleId = async (raffleId: string): Promise<Raffl
   return { id: docData.id, ...docData.data() } as RaffleResult;
 };
 
-// ActivityLogs Collection
-const activityLogsCollection = collection(db, 'activityLogs');
 
+// Activity Log Functions
 export const addActivityLog = async (logData: Omit<ActivityLog, 'id' | 'timestamp'>): Promise<void> => {
   try {
     await addDoc(activityLogsCollection, {
@@ -252,8 +437,13 @@ export const addActivityLog = async (logData: Omit<ActivityLog, 'id' | 'timestam
   }
 };
 
-export const getActivityLogs = async (limitCount: number = 100): Promise<ActivityLog[]> => {
-  const q = query(activityLogsCollection, orderBy('timestamp', 'desc'), limit(limitCount));
+export const getActivityLogs = async (limitCount: number = 100, forAdminUsername?: string): Promise<ActivityLog[]> => {
+  let q;
+  if (forAdminUsername) {
+    q = query(activityLogsCollection, where('adminUsername', '==', forAdminUsername), orderBy('timestamp', 'desc'), limit(limitCount));
+  } else {
+    q = query(activityLogsCollection, orderBy('timestamp', 'desc'), limit(limitCount));
+  }
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => {
     const data = doc.data();
@@ -265,28 +455,39 @@ export const getActivityLogs = async (limitCount: number = 100): Promise<Activit
   });
 };
 
-// Ratings Collection
-const ratingsCollection = collection(db, 'ratings');
 
+// Rating Functions
 export const addRating = async (ratingData: Omit<Rating, 'id' | 'createdAt'>): Promise<Rating> => {
   const newRatingData = { ...ratingData, createdAt: serverTimestamp() };
   const docRef = await addDoc(ratingsCollection, newRatingData);
 
-  // Update organizer's average rating and count
   const organizerUser = await getUserByUsername(ratingData.organizerUsername);
   if (organizerUser) {
-    const allOrganizerRatingsSnapshot = await getDocs(query(ratingsCollection, where('organizerUsername', '==', ratingData.organizerUsername)));
-    const ratingsCount = allOrganizerRatingsSnapshot.size;
-    let totalStars = 0;
-    allOrganizerRatingsSnapshot.forEach(doc => {
-      totalStars += (doc.data() as Rating).ratingStars;
-    });
-    const averageRating = ratingsCount > 0 ? parseFloat((totalStars / ratingsCount).toFixed(1)) : 0;
+    const organizerUserRef = doc(db, "users", organizerUser.id);
+    try {
+      await runTransaction(db, async (transaction) => {
+        const organizerDoc = await transaction.get(organizerUserRef);
+        if (!organizerDoc.exists()) {
+          throw "Organizer document does not exist!";
+        }
 
-    await updateUser(organizerUser.id, { averageRating, ratingCount: ratingsCount });
+        const currentRatingCount = organizerDoc.data().ratingCount || 0;
+        const currentAverageRating = organizerDoc.data().averageRating || 0;
+
+        const newRatingCount = currentRatingCount + 1;
+        const newTotalStars = (currentAverageRating * currentRatingCount) + ratingData.ratingStars;
+        const newAverageRating = parseFloat((newTotalStars / newRatingCount).toFixed(1));
+
+        transaction.update(organizerUserRef, {
+          averageRating: newAverageRating,
+          ratingCount: newRatingCount
+        });
+      });
+    } catch (e) {
+      console.error("Transaction failed: ", e);
+    }
   }
-  
-  // Update the participation document to mark that this raffle has been rated by this user
+
   const participationsQuery = query(
     participationsCollection,
     where('raffleId', '==', ratingData.raffleId),
@@ -298,8 +499,7 @@ export const addRating = async (ratingData: Omit<Rating, 'id' | 'createdAt'>): P
     await updateDoc(participationDocToUpdate.ref, { userHasRatedOrganizerForRaffle: true });
   }
 
-
-  return { id: docRef.id, ...newRatingData } as Rating;
+  return { id: docRef.id, ...newRatingData, createdAt: new Date() } as Rating;
 };
 
 export const getRatingsByOrganizerUsername = async (organizerUsername: string): Promise<Rating[]> => {
@@ -325,8 +525,6 @@ export const checkIfUserRatedRaffle = async (raterUsername: string, raffleId: st
   return !snapshot.empty;
 };
 
-
-// --- Backup and Restore ---
 
 const serializeDocument = (docData: Record<string, any>): Record<string, any> => {
   const serialized: Record<string, any> = {};
@@ -418,7 +616,7 @@ export const importFirestoreCollections = async (
       await deleteAllDocumentsInCollection(collectionName);
       summary.push(`Datos existentes en "${collectionName}" eliminados.`);
       console.log(`[Import] Datos eliminados de ${collectionName}. Procediendo a importar...`);
-      
+
       const batch = writeBatch(db);
       const collectionData = dataToImport[collectionName];
       let importedCount = 0;
@@ -433,7 +631,7 @@ export const importFirestoreCollections = async (
         batch.set(docRef, deserializeDocument(restOfData));
         importedCount++;
       }
-      
+
       await batch.commit();
       summary.push(`${importedCount} documentos importados a "${collectionName}".`);
       console.log(`[Import] ${importedCount} documentos importados exitosamente a ${collectionName}.`);
@@ -447,7 +645,4 @@ export const importFirestoreCollections = async (
   }
   return { success: errors.length === 0, errors, summary };
 };
-
-// Function clearAllTestDataFromFirestore removed per user request in previous interaction.
-// If it needs to be re-added, its definition would go here.
 

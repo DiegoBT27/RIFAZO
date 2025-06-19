@@ -8,7 +8,7 @@ import Link from 'next/link';
 import SectionTitle from '@/components/shared/SectionTitle';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Settings, Loader2, Users, PackageCheck, ListCollapse, DatabaseZap, HardDriveUpload } from 'lucide-react'; 
+import { Settings, Loader2, Users, PackageCheck, ListCollapse, DatabaseZap, HardDriveUpload, ShieldCheck as ShieldCheckIcon, Ticket as TicketIcon, SlidersHorizontal, BarChart2 } from 'lucide-react'; 
 
 export default function AdminDashboardPage() {
   const { user, isLoggedIn, isLoading: authIsLoading } = useAuth();
@@ -47,6 +47,29 @@ export default function AdminDashboardPage() {
           <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
             <CardHeader>
               <CardTitle className="font-headline text-xl flex items-center text-primary">
+                <TicketIcon className="mr-2 h-6 w-6" />
+                Gestión de Rifas
+              </CardTitle>
+              <CardDescription>
+                {isFounder 
+                  ? 'Crea, visualiza, edita y elimina todas las rifas de la plataforma.'
+                  : 'Crea, visualiza, edita y elimina tus rifas creadas.'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/admin/my-raffles" className="block w-full">
+                <Button className="w-full">
+                  Ir a Gestión de Rifas
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+        {(isFounder || isAdmin) && (
+          <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
+            <CardHeader>
+              <CardTitle className="font-headline text-xl flex items-center text-primary">
                 <PackageCheck className="mr-2 h-6 w-6" />
                 Gestionar Pagos
               </CardTitle>
@@ -60,6 +83,28 @@ export default function AdminDashboardPage() {
               <Link href="/admin/payment-confirmation" className="block w-full">
                 <Button className="w-full">
                   Ir a Confirmación de Pagos
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
+         {(isFounder || isAdmin) && (
+          <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
+            <CardHeader>
+              <CardTitle className="font-headline text-xl flex items-center text-primary">
+                <BarChart2 className="mr-2 h-6 w-6" />
+                Análisis de Rifas
+              </CardTitle>
+              <CardDescription>
+                Visualiza estadísticas y rendimiento de las rifas.
+                {isAdmin && !isFounder && " (Solo tus rifas)"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/admin/raffle-analytics" className="block w-full">
+                <Button className="w-full">
+                  Ver Analíticas
                 </Button>
               </Link>
             </CardContent>
@@ -81,6 +126,27 @@ export default function AdminDashboardPage() {
               <Link href="/admin/manage-users" className="block w-full">
                 <Button className="w-full">
                   Ir a Gestionar Usuarios
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+        
+        {isFounder && (
+          <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
+            <CardHeader>
+              <CardTitle className="font-headline text-xl flex items-center text-primary">
+                <ShieldCheckIcon className="mr-2 h-6 w-6" />
+                Gestionar Planes de Admins
+              </CardTitle>
+              <CardDescription>
+                 Asigna y administra los planes de suscripción para los usuarios administradores.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href="/admin/manage-admin-plans" className="block w-full">
+                <Button className="w-full">
+                  Gestionar Planes
                 </Button>
               </Link>
             </CardContent>
@@ -132,18 +198,21 @@ export default function AdminDashboardPage() {
         {isFounder && (
           <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300 md:col-span-1 lg:col-span-1">
             <CardHeader>
-              <CardTitle className="font-headline text-xl flex items-center text-foreground">
-                <Settings className="mr-2 h-6 w-6" />
-                Configuración General (Próximamente)
+              <CardTitle className="font-headline text-xl flex items-center text-foreground"> 
+                <SlidersHorizontal className="mr-2 h-6 w-6" /> 
+                Herramientas de Desarrollo
               </CardTitle>
               <CardDescription>
-                Ajustes generales de la plataforma de rifas.
+                Funciones avanzadas para desarrollo y pruebas (Uso con precaución).
+                Actualmente, la limpieza de datos está deshabilitada.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button className="w-full" disabled>
-                  Acceder a Configuración (No disponible)
-              </Button>
+               <Link href="/admin/dev-tools" className="block w-full">
+                <Button className="w-full" variant="outline">
+                  Ir a Herramientas Dev
+                </Button>
+              </Link>
             </CardContent>
           </Card>
         )}

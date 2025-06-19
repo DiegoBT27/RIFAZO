@@ -8,8 +8,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import RaffleCard from '@/components/raffles/RaffleCard';
 import SectionTitle from '@/components/shared/SectionTitle';
 import type { Raffle, ManagedUser } from '@/types';
-import { Loader2, Inbox, PlusCircle } from 'lucide-react';
+import { Loader2, Inbox, PlusCircle } from 'lucide-react'; // Removed Search icon
 import { Button } from '@/components/ui/button';
+// Removed Input import
 import {
   Dialog,
   DialogContent,
@@ -44,6 +45,7 @@ export default function HomePage() {
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [selectedCreatorProfile, setSelectedCreatorProfile] = useState<ManagedUser | null>(null);
   const [rafflesRefreshKey, setRafflesRefreshKey] = useState(0);
+  // Removed searchTerm state
 
   // Removed useEffect that redirected to /login if !isLoggedIn
 
@@ -145,19 +147,20 @@ export default function HomePage() {
       const day = parseInt(dateParts[2], 10);
       const drawDate = new Date(year, month, day);
       drawDate.setHours(0, 0, 0, 0);
-      return drawDate >= today;
+      return drawDate >= today; // Filter only by date
     }
     return false;
   }).sort((a, b) => new Date(a.drawDate).getTime() - new Date(b.drawDate).getTime());
   
   return (
     <div>
-      <div className="flex items-center justify-between mb-4 sm:mb-6">
+      <div className="flex flex-col sm:flex-row items-center justify-between mb-4 sm:mb-6 gap-3 sm:gap-4">
         <SectionTitle className="mb-0 flex-grow border-b-0 pb-0">Rifas Disponibles</SectionTitle>
+        {/* Search input removed */}
         {isLoggedIn && (user?.role === 'admin' || user?.role === 'founder') && (
           <Dialog open={isCreateRaffleDialogOpen} onOpenChange={setIsCreateRaffleDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="text-xs sm:text-sm">
+              <Button variant="outline" size="sm" className="text-xs sm:text-sm h-9 w-full sm:w-auto flex-shrink-0">
                 <PlusCircle className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" /> Crear Rifa
               </Button>
             </DialogTrigger>
@@ -212,11 +215,13 @@ export default function HomePage() {
       ) : (
         <div className="text-center py-8 sm:py-12 border-2 border-dashed border-muted-foreground/30 rounded-lg">
           <Inbox className="h-12 w-12 sm:h-16 sm:w-16 mx-auto text-muted-foreground/70 mb-3 sm:mb-4" />
-          <p className="text-lg sm:text-xl font-semibold text-muted-foreground">No hay rifas disponibles en este momento.</p>
+          <p className="text-lg sm:text-xl font-semibold text-muted-foreground">
+            No hay rifas disponibles en este momento.
+          </p>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
             {isLoggedIn && (user?.role === 'admin' || user?.role === 'founder')
               ? '¡Crea una nueva rifa para empezar!'
-              : 'Vuelve más tarde para ver más rifas.'}
+              : 'Vuelve más tarde para ver nuevas rifas.'}
           </p>
         </div>
       )}

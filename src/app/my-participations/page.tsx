@@ -363,18 +363,18 @@ ID de Participación: ${participation.id}`;
                             </h4>
                             {isWinner ? (
                                 <>
-                                <p className="text-green-700">¡Felicidades! Tu número <strong>{winningNumberStr}</strong> fue el ganador.</p>
-                                <p className="text-muted-foreground">Premio: {participationRaffle.prize}</p>
-                                {participationRaffle.winnerName && <p className="text-muted-foreground">Nombre Registrado: {participationRaffle.winnerName}</p>}
-                                {participationRaffle.winnerPhone && <p className="text-muted-foreground flex items-center"><PhoneIcon className="h-3.5 w-3.5 mr-1"/> Tel. Contacto: {participationRaffle.winnerPhone}</p>}
+                                  <p className="text-green-700">¡Felicidades! Tu número <strong>{winningNumberStr}</strong> fue el ganador.</p>
+                                  <p className="text-muted-foreground">Premio: {participationRaffle.prize}</p>
+                                  <p className="text-muted-foreground">Nombre Registrado: {participationRaffle.winnerName || <span className="italic">No registrado</span>}</p>
+                                  <p className="text-muted-foreground flex items-center"><PhoneIcon className="h-3.5 w-3.5 mr-1"/> Tel. Contacto: {participationRaffle.winnerPhone || <span className="italic">No registrado</span>}</p>
                                 </>
                             ) : (
                                 <>
-                                <p className="text-red-700">El sorteo ha finalizado. El número ganador fue: <strong>{winningNumberStr}</strong>.</p>
-                                <p className="text-muted-foreground">Lamentablemente, tus números no resultaron ganadores esta vez.</p>
-                                <p className="text-muted-foreground">Premio de la rifa: {participationRaffle.prize}</p>
-                                {participationRaffle.winnerName && <p className="text-muted-foreground">Ganador: {participationRaffle.winnerName}</p>}
-                                {participationRaffle.winnerPhone && <p className="text-muted-foreground flex items-center"><PhoneIcon className="h-3.5 w-3.5 mr-1"/>Tel. Ganador: {participationRaffle.winnerPhone}</p>}
+                                  <p className="text-red-700">El sorteo ha finalizado. El número ganador fue: <strong>{winningNumberStr}</strong>.</p>
+                                  <p className="text-muted-foreground">Lamentablemente, tus números no resultaron ganadores esta vez.</p>
+                                  <p className="text-muted-foreground">Premio de la rifa: {participationRaffle.prize}</p>
+                                  <p className="text-muted-foreground">Ganador: {participationRaffle.winnerName || <span className="italic">No registrado</span>}</p>
+                                  <p className="text-muted-foreground flex items-center"><PhoneIcon className="h-3.5 w-3.5 mr-1"/>Tel. Ganador: {participationRaffle.winnerPhone || <span className="italic">No registrado</span>}</p>
                                 </>
                             )}
                         </div>
@@ -453,4 +453,3 @@ ID de Participación: ${participation.id}`;
     </div>
   );
 }
-

@@ -1,4 +1,7 @@
 
+
+export type PlanName = 'free' | 'standard' | 'pro';
+
 export interface AcceptedPaymentMethod {
   id: string; 
   name: string; 
@@ -44,7 +47,7 @@ export interface Participation {
   raffleId: string;
   raffleName: string;
   creatorUsername?: string;
-  participantUsername?: string;
+  participantUsername?: string; // Username of the user who bought the ticket
   numbers: number[];
   paymentStatus: 'pending' | 'confirmed' | 'rejected';
   purchaseDate: string; // ISO Date string
@@ -53,7 +56,6 @@ export interface Participation {
   participantIdCard?: string;
   participantPhone?: string;
   paymentNotes?: string;
-  // New field to track if user has rated this specific participation's raffle organizer
   userHasRatedOrganizerForRaffle?: boolean; 
 }
 
@@ -78,9 +80,17 @@ export interface ManagedUser {
   companyName?: string;
   rif?: string;
 
-  // New fields for ratings
   averageRating?: number;
   ratingCount?: number;
+
+  // Plan fields
+  plan?: PlanName | null;
+  planActive?: boolean;
+  planStartDate?: string | null; // ISO Date string
+  planEndDate?: string | null; // ISO Date string
+  planAssignedBy?: string | null; // username of the founder who assigned the plan
+  rafflesCreatedThisPeriod?: number;
+  rafflesEditedThisPeriod?: number; // Added for edit limit tracking
 }
 
 export type ActivityLogActionType = 
@@ -90,7 +100,12 @@ export type ActivityLogActionType =
   | 'USER_BLOCKED' | 'USER_UNBLOCKED' | 'WINNER_REGISTERED'
   | 'ADMIN_LOGIN' | 'ADMIN_LOGOUT' 
   | 'PROFILE_UPDATED'
-  | 'ORGANIZER_RATED'; // New activity log type
+  | 'ORGANIZER_RATED'
+  | 'ADMIN_PLAN_ASSIGNED'
+  | 'ADMIN_PLAN_EXPIRED'
+  | 'ADMIN_PLAN_REMOVED' 
+  | 'ADMIN_PLAN_SCHEDULED' 
+  | 'ADMIN_PLAN_ACTIVATED_SCHEDULED';
 
 
 export interface ActivityLog {
@@ -112,4 +127,3 @@ export interface Rating {
   comment?: string; // Optional comment
   createdAt: any; // Firestore ServerTimestamp
 }
-

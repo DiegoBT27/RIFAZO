@@ -23,6 +23,8 @@ import {
 } from '@/components/ui/dialog';
 import { format as formatDateFns } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { getPlanDetails } from '@/lib/config/plans';
+import PlanLimitDialog from '@/components/admin/PlanLimitDialog';
 
 export default function ActivityLogsPage() {
   const { user, isLoggedIn, isLoading: authIsLoading } = useAuth();
@@ -32,25 +34,46 @@ export default function ActivityLogsPage() {
   const [pageIsLoading, setPageIsLoading] = useState(true);
   const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null);
   const [isLogDetailOpen, setIsLogDetailOpen] = useState(false);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [isPlanLimitDialogOpen, setIsPlanLimitDialogOpen] = useState(false);
+
 
   useEffect(() => {
     if (!authIsLoading) {
       if (!isLoggedIn) {
         router.replace('/login');
-      } else if (user?.role !== 'founder') {
+      } else if (user?.role !== 'founder' && user?.role !== 'admin') {
         router.replace('/');
+      } else if (user.role === 'admin') {
+        const planDetails = getPlanDetails(user.planActive ? user.plan : null);
+        if (!planDetails.includesActivityLog) {
+            setAccessDenied(true);
+            setIsPlanLimitDialogOpen(true); // Trigger dialog if plan doesn't include this
+        }
       }
     }
   }, [isLoggedIn, user, authIsLoading, router]);
 
   const fetchLogs = useCallback(async () => {
-    if (!isLoggedIn || user?.role !== 'founder') {
+    if (!isLoggedIn || !user || (user.role !== 'founder' && user.role !== 'admin')) {
       setPageIsLoading(false);
       return;
     }
+    if (user.role === 'admin') {
+        const planDetails = getPlanDetails(user.planActive ? user.plan : null);
+        if (!planDetails.includesActivityLog) {
+            setLogs([]);
+            setPageIsLoading(false);
+            // Access denied is handled by useEffect, which also sets isPlanLimitDialogOpen
+            return;
+        }
+    }
+
     setPageIsLoading(true);
     try {
-      const loadedLogs = await getActivityLogs(100); 
+      const loadedLogs = user.role === 'founder' 
+        ? await getActivityLogs(100) 
+        : await getActivityLogs(100, user.username); // Pass username if admin
       setLogs(loadedLogs);
     } catch (error) {
       console.error("[ActivityLogsPage] Error loading logs:", error);
@@ -62,10 +85,11 @@ export default function ActivityLogsPage() {
   }, [isLoggedIn, user, toast]);
 
   useEffect(() => {
-    if (!authIsLoading && isLoggedIn && user?.role === 'founder') {
+    // Fetch logs only if not access denied and user is authenticated and has correct role
+    if (!authIsLoading && isLoggedIn && (user?.role === 'founder' || (user?.role === 'admin' && !accessDenied))) {
       fetchLogs();
     }
-  }, [authIsLoading, isLoggedIn, user, fetchLogs]);
+  }, [authIsLoading, isLoggedIn, user, fetchLogs, accessDenied]);
 
   const formatActionType = (actionType: ActivityLogActionType | undefined | null): string => {
     if (!actionType) return 'Acción Desconocida';
@@ -85,6 +109,12 @@ export default function ActivityLogsPage() {
       ADMIN_LOGIN: 'Inicio de Sesión Admin',
       ADMIN_LOGOUT: 'Cierre de Sesión Admin',
       PROFILE_UPDATED: 'Actualización de Perfil',
+      ORGANIZER_RATED: 'Calificación a Organizador',
+      ADMIN_PLAN_ASSIGNED: 'Plan de Admin Asignado',
+      ADMIN_PLAN_EXPIRED: 'Plan de Admin Expirado',
+      ADMIN_PLAN_REMOVED: 'Plan de Admin Removido',
+      ADMIN_PLAN_SCHEDULED: 'Plan de Admin Programado',
+      ADMIN_PLAN_ACTIVATED_SCHEDULED: 'Plan Programado Activado',
     };
     return map[actionType] || String(actionType).replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
   };
@@ -166,7 +196,7 @@ export default function ActivityLogsPage() {
       }
     } else if (log.details && typeof log.details === 'string' && log.details.trim() !== '') {
       content += `Detalles Adicionales:\n  ${log.details}\n`;
-    } else { // Covers log.details being null, undefined, or an empty object not caught above
+    } else { 
        content += `Detalles Adicionales:\n  (No hay detalles registrados para esta acción)\n`;
     }
     
@@ -199,7 +229,27 @@ export default function ActivityLogsPage() {
     );
   }
 
-  if (!isLoggedIn || user?.role !== 'founder') {
+  if (accessDenied) {
+     return (
+        <>
+            <PlanLimitDialog
+                isOpen={isPlanLimitDialogOpen}
+                onOpenChange={(isOpen) => {
+                    setIsPlanLimitDialogOpen(isOpen);
+                    if (!isOpen) router.replace('/admin'); 
+                }}
+                featureName="ver los registros de actividad"
+            />
+            {/* Optionally render a minimal background or message if needed */}
+            <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)] opacity-50">
+                <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+                <p className="text-destructive font-semibold">Acceso Denegado por Plan</p>
+            </div>
+        </>
+     );
+  }
+
+  if (!isLoggedIn || (user?.role !== 'founder' && user?.role !== 'admin')) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
         <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
@@ -221,6 +271,7 @@ export default function ActivityLogsPage() {
             <CardTitle className="text-lg">Últimas Actividades</CardTitle>
             <CardDescription>
               Se muestran los últimos 100 registros. Haz clic en "Ver Detalles" para más información.
+              {user?.role === 'admin' && " (Solo tus acciones)"}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -310,13 +361,12 @@ export default function ActivityLogsPage() {
                           </>
                         );
                       } else {
-                        // Prepare relevantDetails, excluding known ones already displayed or handled
                         const relevantDetails = { ...selectedLog.details };
                         delete relevantDetails.raffleName;
                         delete relevantDetails.raffleId;
                         delete relevantDetails.username;
                         delete relevantDetails.userId;
-                        delete relevantDetails.updatedFields; // Important to remove it here too
+                        delete relevantDetails.updatedFields; 
 
                         if (Object.keys(relevantDetails).length > 0) {
                           return (
@@ -340,7 +390,6 @@ export default function ActivityLogsPage() {
                             </>
                           );
                         } else {
-                          // If details was an object, but no updatedFields, and no other relevant keys
                           return <p className="text-xs text-muted-foreground italic mt-1">Detalles Adicionales: (No hay más detalles específicos registrados para esta acción)</p>;
                         }
                       }
@@ -352,7 +401,6 @@ export default function ActivityLogsPage() {
                         </>
                       );
                     } else {
-                      // This covers selectedLog.details being null, undefined, or an empty object initially
                       return <p className="text-xs text-muted-foreground italic mt-1">Detalles Adicionales: (No hay detalles registrados para esta acción)</p>;
                     }
                   })()}
@@ -370,6 +418,14 @@ export default function ActivityLogsPage() {
           </DialogContent>
         </Dialog>
       )}
+       <PlanLimitDialog
+            isOpen={isPlanLimitDialogOpen && accessDenied}
+            onOpenChange={(isOpen) => {
+                setIsPlanLimitDialogOpen(isOpen);
+                if (!isOpen && accessDenied) router.replace('/admin'); // Redirect if dialog closed & still denied
+            }}
+            featureName="ver los registros de actividad"
+        />
     </div>
   );
 }
