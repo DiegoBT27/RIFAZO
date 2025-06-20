@@ -10,6 +10,9 @@ import { initialPlatformUsers } from '@/lib/mock-data';
 import { getUsers, getUserByUsername, addUser, updateUser, addActivityLog } from '@/lib/firebase/firestoreService';
 import { PLAN_CONFIG } from '@/lib/config/plans'; 
 import { differenceInDays } from 'date-fns'; 
+import { db } from '@/lib/firebase/config';
+import { doc, onSnapshot } from 'firebase/firestore';
+
 
 interface LoginResult {
   success: boolean;
@@ -326,6 +329,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!user || !user.id || !isLoggedIn) {
+      return; 
+    }
+
+    console.log(`[AuthContext] Setting up real-time listener for user: ${user.username} (ID: ${user.id})`);
+
+    const userDocRef = doc(db, 'users', user.id);
+
+    const unsubscribe = onSnapshot(userDocRef, (snapshot) => {
+      console.log(`[AuthContext] Real-time listener fired for user: ${user.username}`);
+      if (snapshot.exists()) {
+        const dbUser = snapshot.data() as ManagedUser;
+        if (dbUser.sessionId && user.sessionId && dbUser.sessionId !== user.sessionId) {
+          console.warn(`[AuthContext] Session ID mismatch detected by listener. DB: ${dbUser.sessionId}, Local: ${user.sessionId}. Logging out stale session.`);
+          logout({ sessionExpired: true });
+        }
+      } else {
+        console.warn(`[AuthContext] User document for ${user.username} was deleted. Logging out.`);
+        logout({ sessionExpired: true });
+      }
+    }, (error) => {
+      console.error("[AuthContext] Error in real-time listener:", error);
+    });
+
+    return () => {
+      console.log(`[AuthContext] Cleaning up real-time listener for user: ${user.username}`);
+      unsubscribe();
+    };
+  }, [user, isLoggedIn, logout]);
 
   return (
     <AuthContext.Provider value={{ user, isLoggedIn, isLoading, login, logout, refreshUser }}>
