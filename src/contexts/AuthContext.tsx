@@ -21,7 +21,7 @@ interface AuthContextType {
   isLoggedIn: boolean;
   isLoading: boolean; 
   login: (usernameInput: string, passwordInput: string) => Promise<LoginResult>;
-  logout: () => void;
+  logout: (options?: { sessionExpired?: boolean }) => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
@@ -121,12 +121,51 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return updatedUser;
   };
   
+  const logout = async (options?: { sessionExpired?: boolean }) => {
+    console.log('[AuthContext] Logging out user.');
+    const userToLogOut = user; // Capture user before state is cleared
+    if (userToLogOut) {
+      try {
+        await updateUser(userToLogOut.id, { sessionId: null });
+        await addActivityLog({
+          adminUsername: userToLogOut.username,
+          actionType: 'ADMIN_LOGOUT',
+          targetInfo: `Usuario: ${userToLogOut.username}`,
+          details: { reason: options?.sessionExpired ? 'session_expired' : 'user_initiated' }
+        });
+      } catch (error) {
+          console.error("[AuthContext] Error during logout operations:", error);
+      }
+    }
+    localStorage.removeItem('currentUser');
+    setUser(null);
+    setIsLoggedIn(false);
+    
+    const redirectPath = options?.sessionExpired 
+        ? '/login?reason=session_expired' 
+        : '/login';
+    router.push(redirectPath);
+  };
+
   const refreshUser = async () => {
     if (user?.username) {
       setIsLoading(true);
       try {
+        const storedUserJSON = localStorage.getItem('currentUser');
+        if (!storedUserJSON) {
+            logout({ sessionExpired: true });
+            return;
+        }
+        const localUser = JSON.parse(storedUserJSON) as ManagedUser;
+
         let dbUser = await getUserByUsername(user.username);
         if (dbUser) {
+          if (dbUser.sessionId && dbUser.sessionId !== localUser.sessionId) {
+            console.warn(`[AuthContext] Session expired during refresh for '${user.username}'. Logging out.`);
+            logout({ sessionExpired: true });
+            return; 
+          }
+
           dbUser = await checkAndManagePlanStatus(dbUser);
           setUser(dbUser);
           localStorage.setItem('currentUser', JSON.stringify(dbUser));
@@ -193,6 +232,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           console.log(`[AuthContext] Firestore user data for '${parsedUser.username}':`, dbUser);
           
           if (dbUser) { 
+            if (dbUser.sessionId && dbUser.sessionId !== parsedUser.sessionId) {
+              console.warn(`[AuthContext] Session ID mismatch for '${parsedUser.username}'. Local: ${parsedUser.sessionId}, DB: ${dbUser.sessionId}. This session is stale. Redirecting to login.`);
+              localStorage.removeItem('currentUser');
+              router.push('/login?reason=session_expired');
+              setIsLoading(false);
+              return;
+            }
+
             if (dbUser.isBlocked === true) {
               console.warn(`[AuthContext] User '${parsedUser.username}' is blocked. Clearing session.`);
               localStorage.removeItem('currentUser');
@@ -237,7 +284,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           console.warn(`[AuthContext] Login attempt for blocked user: ${usernameInput}.`);
           return { success: false, reason: 'blocked' };
         }
-
+        
+        const newSessionId = crypto.randomUUID();
+        console.log(`[AuthContext] Generated new session ID for ${usernameInput}: ${newSessionId}`);
+        
+        dbUser.sessionId = newSessionId;
+        await updateUser(dbUser.id, { sessionId: newSessionId });
+        
         dbUser = await checkAndManagePlanStatus(dbUser);
         
         if (dbUser.plan && !dbUser.planActive && (dbUser.planEndDate && new Date(dbUser.planEndDate) < new Date()) && !(dbUser.planStartDate && new Date(dbUser.planStartDate) > new Date())) {
@@ -272,21 +325,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const logout = async () => {
-    console.log('[AuthContext] Logging out user.');
-    if (user) {
-       await addActivityLog({
-        adminUsername: user.username,
-        actionType: 'ADMIN_LOGOUT',
-        targetInfo: `Usuario: ${user.username}`,
-      });
-    }
-    localStorage.removeItem('currentUser');
-    setUser(null);
-    setIsLoggedIn(false);
-    router.push('/login'); 
   };
 
   return (

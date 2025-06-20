@@ -65,6 +65,7 @@ export interface ManagedUser {
   role: 'user' | 'admin' | 'founder';
   password?: string;
   isBlocked?: boolean; 
+  sessionId?: string | null;
   
   organizerType?: 'individual' | 'company';
   publicAlias?: string;
@@ -127,3 +128,5 @@ export interface Rating {
   comment?: string; // Optional comment
   createdAt: any; // Firestore ServerTimestamp
 }
+
+    

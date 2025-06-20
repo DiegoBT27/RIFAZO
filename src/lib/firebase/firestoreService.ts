@@ -63,6 +63,7 @@ export const addUser = async (userData: Omit<ManagedUser, 'id'>): Promise<Manage
     password: userData.password,
     role: userData.role || 'user',
     isBlocked: userData.isBlocked || false,
+    sessionId: null,
     averageRating: 0,
     ratingCount: 0,
     plan: null,
@@ -87,7 +88,7 @@ export const addUser = async (userData: Omit<ManagedUser, 'id'>): Promise<Manage
       dataToSave.planAssignedBy = 'system_initial';
   }
 
-  const optionalFields: (keyof Omit<ManagedUser, 'id' | 'username' | 'password' | 'role' | 'isBlocked' | 'averageRating' | 'ratingCount' | 'plan' | 'planActive' | 'planStartDate' | 'planEndDate' | 'planAssignedBy' | 'rafflesCreatedThisPeriod' | 'rafflesEditedThisPeriod'>)[] = [
+  const optionalFields: (keyof Omit<ManagedUser, 'id' | 'username' | 'password' | 'role' | 'isBlocked' | 'averageRating' | 'ratingCount' | 'plan' | 'planActive' | 'planStartDate' | 'planEndDate' | 'planAssignedBy' | 'rafflesCreatedThisPeriod' | 'rafflesEditedThisPeriod' | 'sessionId'>)[] = [
     'organizerType', 'fullName', 'companyName', 'rif', 'publicAlias',
     'whatsappNumber', 'locationState', 'locationCity',
     'email', 'bio', 'adminPaymentMethodsInfo'
@@ -722,6 +723,3 @@ export const importFirestoreCollections = async (
   }
   return { success: errors.length === 0, errors, summary };
 };
-
-
-

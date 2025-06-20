@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, UserCog, CalendarDays, CheckCircle, XCircle, AlertTriangle, ShieldQuestion, Trash2, CalendarIcon as CalendarIconLucide } from 'lucide-react';
@@ -122,7 +122,6 @@ export default function AdminPlanManagerClient() {
       setUserToRemovePlan(null); // Close dialog
     }
   };
-
 
   const formatDateDisplay = (isoDateString?: string | null) => {
     if (!isoDateString) return 'N/A';
@@ -301,3 +300,5 @@ export default function AdminPlanManagerClient() {
     </div>
   );
 }
+
+    

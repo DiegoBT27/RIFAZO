@@ -127,7 +127,7 @@ interface CreateRaffleFormProps {
 
 export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
   const { toast } = useToast();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, refreshUser } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isPlanLimitDialogOpen, setIsPlanLimitDialogOpen] = useState(false);
@@ -283,7 +283,9 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
     };
 
     try {
-      const newRaffle = await addRaffle(raffleDataForDb, currentUser as ManagedUser); 
+      const newRaffle = await addRaffle(raffleDataForDb, currentUser as ManagedUser);
+      await refreshUser(); // Refresh user data in AuthContext
+      
       toast({
         title: "Rifa Creada Exitosamente",
         description: `La rifa "${newRaffle.name}" ha sido guardada en Firestore.`,
