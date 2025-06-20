@@ -50,10 +50,10 @@ import { updateRaffle, addActivityLog } from '@/lib/firebase/firestoreService';
 
 const todayAtMidnight = new Date();
 todayAtMidnight.setHours(0, 0, 0, 0);
-const PLACEHOLDER_IMAGE_URL = "https://placehold.co/800x450.png";
+const PLACEHOLDER_IMAGE_URL = "https://i.ibb.co/6RJzmG1s/Rifazo.png";
 
 
-const createEditRaffleFormSchema = (planMaxTickets: number | Infinity, planDisplayName: string, planAllowsCustomImage: boolean) => z.object({
+const createEditRaffleFormSchema = (planMaxTickets: number | Infinity, planDisplayName: string, planAllowsCustomImage: boolean, raffleOriginalImage: string | undefined) => z.object({
   id: z.string(),
   name: z.string().min(5, { message: "El nombre debe tener al menos 5 caracteres." }),
   description: z.string().min(10, { message: "La descripción debe tener al menos 10 caracteres." }),
@@ -108,10 +108,10 @@ const createEditRaffleFormSchema = (planMaxTickets: number | Infinity, planDispl
       path: ["totalNumbers"],
     });
   }
-  if (!planAllowsCustomImage && data.image && data.image !== PLACEHOLDER_IMAGE_URL && data.image !== raffle?.image /* Allow existing image if plan changed */) {
+  if (!planAllowsCustomImage && data.image && data.image !== PLACEHOLDER_IMAGE_URL && data.image !== raffleOriginalImage) {
     ctx.addIssue({
      code: z.ZodIssueCode.custom,
-     message: `Tu plan actual (${planDisplayName}) no permite cambiar a una nueva imagen personalizada. Se mantendrá la imagen actual o una por defecto.`,
+     message: `Tu plan actual (${planDisplayName}) no permite cambiar a una nueva imagen personalizada. Se mantendrá la imagen actual o una por defecto si la actual es el placeholder.`,
      path: ["image"],
    });
  }
@@ -132,11 +132,12 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
   const [imagePreview, setImagePreview] = useState<string | null>(raffle?.image || null);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isPlanLimitDialogOpen, setIsPlanLimitDialogOpen] = useState(false);
+  const [planLimitMessage, setPlanLimitMessage] = useState("esta acción");
   const formPrefix = 'edit-';
   const [initialFormState, setInitialFormState] = useState<EditRaffleFormValues | null>(null);
 
   const founderPlanDetailsOverride: AppPlanDetails = {
-    name: 'pro',
+    name: 'pro', 
     displayName: 'Acceso de Fundador (Ilimitado)',
     durationDays: Infinity,
     raffleLimit: Infinity,
@@ -151,7 +152,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
     includesAiReceiptValidation: true,
     includesAutomatedBackups: true,
     includesActivityLog: true,
-    includesExclusiveSupport: true,
+    includesBackupRestore: true, 
     featureListIds: [],
     tagline: '',
   };
@@ -163,7 +164,8 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
   const currentEditRaffleFormSchema = createEditRaffleFormSchema(
     effectivePlanDetails.maxTicketsPerRaffle,
     effectivePlanDetails.displayName,
-    effectivePlanDetails.includesCustomImage
+    effectivePlanDetails.includesCustomImage,
+    raffle?.image 
   );
 
   const parseInitialPaymentDetails = useCallback((acceptedMethods: AcceptedPaymentMethod[] | undefined) => {
@@ -276,7 +278,6 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
 
 
     const isFounder = currentUser.role === 'founder';
-    // Use effectivePlanDetails for checking permissions
     if (!isFounder && !effectivePlanDetails.canEditRaffles) {
         setPlanLimitMessage("editar rifas");
         setIsPlanLimitDialogOpen(true);
@@ -316,7 +317,19 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
       })
       .filter(Boolean) as AcceptedPaymentMethod[];
       
-    const finalImage = (isFounder || effectivePlanDetails.includesCustomImage) ? data.image : initialFormState.image;
+    let finalImage = initialFormState.image;
+    if (data.image !== initialFormState.image) { 
+      if (isFounder || effectivePlanDetails.includesCustomImage) {
+        finalImage = data.image;
+      } else {
+        
+        finalImage = (initialFormState.image && initialFormState.image !== PLACEHOLDER_IMAGE_URL) ? initialFormState.image : PLACEHOLDER_IMAGE_URL;
+        
+        toast({ title: "Cambio de Imagen Ignorado", description: "Tu plan no permite imágenes personalizadas. Se mantuvo la imagen original o una por defecto.", variant: "default" });
+      }
+    } else if (!finalImage && !effectivePlanDetails.includesCustomImage) { 
+      finalImage = PLACEHOLDER_IMAGE_URL;
+    }
 
 
     const raffleDataForDb: Partial<Raffle> = {
@@ -354,14 +367,14 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
         }
     });
 
-    if (data.image !== initialFormState.image && (isFounder || effectivePlanDetails.includesCustomImage)) {
+    if (finalImage !== initialFormState.image) {
       if (!actualUpdatedFields.includes('image')) actualUpdatedFields.push('image');
     }
 
 
     try {
       if (actualUpdatedFields.length > 0) {
-        await updateRaffle(data.id, raffleDataForDb, currentUser);
+        await updateRaffle(data.id, raffleDataForDb, currentUser, actualUpdatedFields); 
         toast({
           title: "Rifa Actualizada",
           description: `La rifa "${data.name}" ha sido guardada exitosamente.`,
@@ -389,6 +402,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
     } catch (error: any) {
       console.error("Error updating raffle in Firestore:", error);
        if (error.message.includes("plan actual no permite editar") || error.message.includes("permiso para editar esta rifa") || error.message.includes("alcanzado el límite de ediciones")) {
+        setPlanLimitMessage(error.message); // Set a more specific message if available
         setIsPlanLimitDialogOpen(true);
       } else {
         toast({ title: "Error de Guardado", description: error.message || "No se pudo actualizar la rifa en Firestore.", variant: "destructive" });
@@ -513,7 +527,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="w-20 h-20 sm:w-24 sm:h-24 border border-dashed rounded-md flex items-center justify-center bg-muted/50 overflow-hidden">
               {imagePreview ? (
-                <Image src={imagePreview} alt="Vista previa de la rifa" width={96} height={96} className="object-contain" data-ai-hint={effectivePlanDetails.includesCustomImage ? "raffle prize product" : "placeholder generic"} />
+                <Image src={imagePreview} alt="Vista previa de la rifa" width={96} height={96} className="object-contain" data-ai-hint="logo brand" />
               ) : (
                 <ImageIcon className="h-8 w-8 sm:h-10 sm:w-10 text-muted-foreground" />
               )}
@@ -671,9 +685,10 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
     <PlanLimitDialog
         isOpen={isPlanLimitDialogOpen}
         onOpenChange={setIsPlanLimitDialogOpen}
-        featureName={isLoading ? "validando plan..." : "editar esta rifa o excediste tu límite de ediciones"}
+        featureName={planLimitMessage}
     />
     </>
   );
 }
+
 

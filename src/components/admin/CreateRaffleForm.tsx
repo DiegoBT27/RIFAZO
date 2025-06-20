@@ -52,7 +52,7 @@ const tomorrowAtMidnight = new Date();
 tomorrowAtMidnight.setDate(tomorrowAtMidnight.getDate() + 1);
 tomorrowAtMidnight.setHours(0, 0, 0, 0);
 
-const PLACEHOLDER_IMAGE_URL = "https://placehold.co/800x450.png";
+const PLACEHOLDER_IMAGE_URL = "https://i.ibb.co/6RJzmG1s/Rifazo.png";
 
 
 const createRaffleFormSchema = (planMaxTickets: number | Infinity, planDisplayName: string, planAllowsCustomImage: boolean) => z.object({
@@ -137,7 +137,7 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
   const [imagePreview, setImagePreview] = useState<string | null>(planDetails.includesCustomImage ? null : PLACEHOLDER_IMAGE_URL);
 
   const currentRaffleFormSchema = createRaffleFormSchema(
-    currentUser?.role === 'founder' ? Infinity : planDetails.maxTicketsPerRaffle,
+    currentUser?.role === 'founder' ? Infinity : planDetails.maxTicketsPerRaffle, 
     planDetails.displayName,
     currentUser?.role === 'founder' ? true : planDetails.includesCustomImage
   );
@@ -166,14 +166,12 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
     }
   });
    useEffect(() => {
-    // Ensure image field and preview are set correctly based on plan when component mounts or planDetails change
     if (!planDetails.includesCustomImage) {
       setValue('image', PLACEHOLDER_IMAGE_URL, { shouldValidate: true });
       setImagePreview(PLACEHOLDER_IMAGE_URL);
     } else {
-      // If plan allows, and current image value is placeholder, clear it for user input
-      if (watch('image') === PLACEHOLDER_IMAGE_URL) {
-        setValue('image', '', { shouldValidate: true });
+      if (watch('image') === PLACEHOLDER_IMAGE_URL || !watch('image')) { 
+        setValue('image', '', { shouldValidate: false }); 
         setImagePreview(null);
       } else {
         setImagePreview(watch('image'));
@@ -187,7 +185,9 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
   const handleImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
     if (currentUser?.role !== 'founder' && !planDetails.includesCustomImage) {
       toast({ title: "Plan Limitado", description: "Tu plan actual no permite imágenes personalizadas.", variant: "destructive" });
-      event.target.value = ''; // Clear the input if any file was selected
+      event.target.value = ''; 
+      setValue('image', PLACEHOLDER_IMAGE_URL, { shouldValidate: true }); 
+      setImagePreview(PLACEHOLDER_IMAGE_URL); 
       return;
     }
     const file = event.target.files?.[0];
@@ -209,8 +209,10 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
       };
       reader.readAsDataURL(file);
     } else {
+      
+      const defaultImg = planDetails.includesCustomImage ? '' : PLACEHOLDER_IMAGE_URL;
       setImagePreview(planDetails.includesCustomImage ? null : PLACEHOLDER_IMAGE_URL);
-      setValue('image', planDetails.includesCustomImage ? '' : PLACEHOLDER_IMAGE_URL, { shouldValidate: true });
+      setValue('image', defaultImg, { shouldValidate: true });
     }
   };
 
@@ -223,23 +225,23 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
       return;
     }
     
-    const currentPlanIsFounderOrAllowsCustomImage = currentUser.role === 'founder' || planDetails.includesCustomImage;
-    const finalImage = currentPlanIsFounderOrAllowsCustomImage ? data.image : PLACEHOLDER_IMAGE_URL;
-
-    if (!finalImage) { // This check is now more about Zod requirement if plan doesn't allow and placeholder wasn't set
-        toast({ title: "Error de Formulario", description: "Por favor, sube una imagen para la rifa o asegúrate de que se asigne una por defecto.", variant: "destructive" });
-        setIsLoading(false);
-        return;
-    }
-
-
+    const currentPlanDetails = getPlanDetails(currentUser.planActive ? currentUser.plan : null);
     const rafflesCreated = currentUser.rafflesCreatedThisPeriod || 0;
-    if (currentUser.role !== 'founder' && rafflesCreated >= planDetails.raffleLimit) {
+
+    if (currentUser.role !== 'founder' && rafflesCreated >= currentPlanDetails.raffleLimit) {
       setIsPlanLimitDialogOpen(true);
       setIsLoading(false);
       return;
     }
 
+    const currentPlanIsFounderOrAllowsCustomImage = currentUser.role === 'founder' || currentPlanDetails.includesCustomImage;
+    const finalImage = currentPlanIsFounderOrAllowsCustomImage ? data.image : PLACEHOLDER_IMAGE_URL;
+
+    if (!finalImage) { 
+        toast({ title: "Error de Formulario", description: "Por favor, sube una imagen para la rifa o asegúrate de que se asigne una por defecto.", variant: "destructive" });
+        setIsLoading(false);
+        return;
+    }
 
     const acceptedPaymentMethods: AcceptedPaymentMethod[] = data.selectedPaymentMethodIds
       .map(id => {
@@ -287,8 +289,8 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
         description: `La rifa "${newRaffle.name}" ha sido guardada en Firestore.`,
       });
       reset();
-      setImagePreview(planDetails.includesCustomImage ? null : PLACEHOLDER_IMAGE_URL);
-      setValue('image', planDetails.includesCustomImage ? '' : PLACEHOLDER_IMAGE_URL);
+      setImagePreview(currentPlanDetails.includesCustomImage ? null : PLACEHOLDER_IMAGE_URL);
+      setValue('image', currentPlanDetails.includesCustomImage ? '' : PLACEHOLDER_IMAGE_URL);
       setValue('selectedPaymentMethodIds', []);
       setValue('lotteryName', null);
       setValue('drawTime', 'unspecified_time');
@@ -413,7 +415,7 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="w-20 h-20 sm:w-24 sm:h-24 border border-dashed rounded-md flex items-center justify-center bg-muted/50 overflow-hidden">
               {imagePreview ? (
-                <Image src={imagePreview} alt="Vista previa" width={96} height={96} className="object-contain" data-ai-hint={planDetails.includesCustomImage ? "raffle prize product" : "placeholder generic"} />
+                <Image src={imagePreview} alt="Vista previa" width={96} height={96} className="object-contain" data-ai-hint="logo brand" />
               ) : (
                 <ImageIcon className="h-8 w-8 sm:h-10 sm:w-10 text-muted-foreground" />
               )}
@@ -442,7 +444,7 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
             </div>
           </div>
           {!(currentUser?.role === 'founder' || planDetails.includesCustomImage) && (
-            <p className="text-xs text-muted-foreground mt-1">Tu plan actual ({planDetails.displayName}) no incluye imágenes personalizadas. Se usará una imagen por defecto.</p>
+            <p className="text-xs text-muted-foreground mt-1">Tu plan actual ({planDetails.displayName}) no permite imágenes personalizadas. Se usará una imagen por defecto.</p>
           )}
           {errors.image && <p className="text-xs text-destructive mt-1">{errors.image.message}</p>}
         </div>

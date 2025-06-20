@@ -71,7 +71,7 @@ export const addUser = async (userData: Omit<ManagedUser, 'id'>): Promise<Manage
     planEndDate: null,
     planAssignedBy: null,
     rafflesCreatedThisPeriod: 0,
-    rafflesEditedThisPeriod: 0, // Added
+    rafflesEditedThisPeriod: 0,
   };
 
   if (userData.role === 'admin' || userData.role === 'founder') {
@@ -185,7 +185,7 @@ export const assignPlanToAdmin = async (
     planEndDate: endDate.toISOString(),
     planAssignedBy: assignerUsername,
     rafflesCreatedThisPeriod: 0, 
-    rafflesEditedThisPeriod: 0, // Reset edit counter
+    rafflesEditedThisPeriod: 0,
   };
 
   await updateDoc(adminUserDocRef, planData);
@@ -225,7 +225,7 @@ export const removeAdminPlan = async (adminUserId: string, removerUsername: stri
     planEndDate: null,
     planAssignedBy: removerUsername, 
     rafflesCreatedThisPeriod: 0,
-    rafflesEditedThisPeriod: 0, // Reset edit counter
+    rafflesEditedThisPeriod: 0,
   };
   await updateDoc(adminUserDocRef, planUpdateData);
 
@@ -262,7 +262,7 @@ export const addRaffle = async (raffleData: Omit<Raffle, 'id' | 'soldNumbers' | 
   const docRef = await addDoc(rafflesCollection, newRaffleData);
   const savedRaffle = { id: docRef.id, ...newRaffleData } as Raffle;
 
-  if (creator.id) {
+  if (creator.id) { // Added check for creator.id
     const userDocRef = doc(db, 'users', creator.id);
     await updateDoc(userDocRef, {
       rafflesCreatedThisPeriod: increment(1)
@@ -283,7 +283,7 @@ export const addRaffle = async (raffleData: Omit<Raffle, 'id' | 'soldNumbers' | 
   return savedRaffle;
 };
 
-export const updateRaffle = async (raffleId: string, raffleData: Partial<Raffle>, editor: ManagedUser): Promise<void> => {
+export const updateRaffle = async (raffleId: string, raffleData: Partial<Raffle>, editor?: ManagedUser, updatedFields?: string[]): Promise<void> => {
   if (!editor) {
     let errorMessage = "Información del editor inválida para actualizar la rifa. El objeto 'editor' es undefined.";
     console.error(`Error en updateRaffle: ${errorMessage}`);
@@ -307,7 +307,11 @@ export const updateRaffle = async (raffleId: string, raffleData: Partial<Raffle>
       throw new Error("No tienes permiso para editar esta rifa porque no eres el creador y no eres fundador.");
     }
     if (planDetails.canEditRaffles === 'limited') {
-      if ((editor.rafflesEditedThisPeriod || 0) >= (planDetails.editRaffleLimit || Infinity)) {
+      if (!editor.id) throw new Error("ID del editor no encontrado para actualizar el contador de ediciones.");
+      const currentEditorData = await getUserById(editor.id); // Fetch latest editor data
+      if (!currentEditorData) throw new Error("Editor no encontrado en la base de datos.");
+      
+      if ((currentEditorData.rafflesEditedThisPeriod || 0) >= (planDetails.editRaffleLimit || Infinity)) {
         throw new Error(`Has alcanzado el límite de ${planDetails.editRaffleLimit} ediciones de rifas para tu plan actual (${planDetails.displayName}).`);
       }
     }
@@ -316,17 +320,15 @@ export const updateRaffle = async (raffleId: string, raffleData: Partial<Raffle>
   const raffleDoc = doc(db, 'raffles', raffleId);
   await updateDoc(raffleDoc, raffleData);
 
-  // Increment edit count if admin with limited edits and the raffle update was successful
-  if (editor.role === 'admin') {
+  if (editor.role === 'admin' && editor.id) { // Ensure editor.id exists
     const planDetails = getPlanDetails(editor.planActive ? editor.plan : null);
     if (planDetails.canEditRaffles === 'limited') {
         const userDocRef = doc(db, 'users', editor.id);
         await updateDoc(userDocRef, {
-        rafflesEditedThisPeriod: increment(1)
+          rafflesEditedThisPeriod: increment(1)
         });
     }
   }
-
 
   await addActivityLog({
     adminUsername: editor.username,
@@ -335,6 +337,7 @@ export const updateRaffle = async (raffleId: string, raffleData: Partial<Raffle>
     details: {
       raffleId: raffleId,
       raffleName: raffleData.name || raffleToEdit.name,
+      updatedFields: updatedFields && updatedFields.length > 0 ? updatedFields : undefined,
     }
   });
 };
@@ -462,7 +465,7 @@ export const addRating = async (ratingData: Omit<Rating, 'id' | 'createdAt'>): P
   const docRef = await addDoc(ratingsCollection, newRatingData);
 
   const organizerUser = await getUserByUsername(ratingData.organizerUsername);
-  if (organizerUser) {
+  if (organizerUser && organizerUser.id) { // Ensure organizerUser.id exists
     const organizerUserRef = doc(db, "users", organizerUser.id);
     try {
       await runTransaction(db, async (transaction) => {
@@ -556,18 +559,92 @@ const deserializeDocument = (docData: Record<string, any>): Record<string, any> 
   return deserialized;
 };
 
-export const exportFirestoreCollections = async (collectionNames: string[]): Promise<Record<string, any[]>> => {
+export const exportFirestoreCollections = async (
+  collectionNames: string[],
+  forAdminUsername?: string
+): Promise<Record<string, any[]>> => {
   const data: Record<string, any[]> = {};
+  let adminRaffleIds: string[] = [];
+
+  if (forAdminUsername) {
+    // 1. Fetch admin's own raffles
+    const rafflesQuery = query(collection(db, 'raffles'), where('creatorUsername', '==', forAdminUsername));
+    const rafflesSnapshot = await getDocs(rafflesQuery);
+    if (!rafflesSnapshot.empty) {
+      data['raffles'] = rafflesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...serializeDocument(doc.data()),
+      }));
+      adminRaffleIds = rafflesSnapshot.docs.map(doc => doc.id);
+    } else {
+      data['raffles'] = [];
+    }
+  }
+
   for (const collectionName of collectionNames) {
-    const colRef = collection(db, collectionName);
-    const snapshot = await getDocs(colRef);
-    data[collectionName] = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...serializeDocument(doc.data()),
-    }));
+    if (forAdminUsername) {
+      if (collectionName === 'raffles') continue; // Already handled
+      if (collectionName === 'users') continue; // Admins cannot backup users collection
+
+      let items: any[] = [];
+      const CHUNK_SIZE = 30; // Firestore 'in' query limit
+
+      switch (collectionName) {
+        case 'participations':
+          if (adminRaffleIds.length > 0) {
+            for (let i = 0; i < adminRaffleIds.length; i += CHUNK_SIZE) {
+              const chunk = adminRaffleIds.slice(i, i + CHUNK_SIZE);
+              if (chunk.length > 0) {
+                const participationsQuery = query(collection(db, 'participations'), where('raffleId', 'in', chunk));
+                const snapshot = await getDocs(participationsQuery);
+                snapshot.docs.forEach(doc => {
+                  items.push({ id: doc.id, ...serializeDocument(doc.data()) });
+                });
+              }
+            }
+          }
+          data[collectionName] = items;
+          break;
+        case 'raffleResults':
+          if (adminRaffleIds.length > 0) {
+            for (let i = 0; i < adminRaffleIds.length; i += CHUNK_SIZE) {
+              const chunk = adminRaffleIds.slice(i, i + CHUNK_SIZE);
+              if (chunk.length > 0) {
+                const resultsQuery = query(collection(db, 'raffleResults'), where('raffleId', 'in', chunk));
+                const snapshot = await getDocs(resultsQuery);
+                snapshot.docs.forEach(doc => {
+                  items.push({ id: doc.id, ...serializeDocument(doc.data()) });
+                });
+              }
+            }
+          }
+          data[collectionName] = items;
+          break;
+        case 'activityLogs':
+          const activityLogsQuery = query(collection(db, 'activityLogs'), where('adminUsername', '==', forAdminUsername));
+          const activityLogsSnapshot = await getDocs(activityLogsQuery);
+          data[collectionName] = activityLogsSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...serializeDocument(doc.data()),
+          }));
+          break;
+        default:
+          // This case should not be hit for admins if collectionNames is properly filtered
+          console.warn(`[Backup] Admin backup for unhandled collection: ${collectionName}. Skipping.`);
+          data[collectionName] = [];
+      }
+    } else { // Founder backup - backup all specified collections
+      const colRef = collection(db, collectionName);
+      const snapshot = await getDocs(colRef);
+      data[collectionName] = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...serializeDocument(doc.data()),
+      }));
+    }
   }
   return data;
 };
+
 
 const deleteAllDocumentsInCollection = async (collectionName: string, exceptions: { field: string, value: any }[] = []): Promise<number> => {
   const colRef = collection(db, collectionName);
@@ -645,4 +722,6 @@ export const importFirestoreCollections = async (
   }
   return { success: errors.length === 0, errors, summary };
 };
+
+
 

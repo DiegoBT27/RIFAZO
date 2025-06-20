@@ -18,11 +18,12 @@ export interface PlanDetails {
 
   includesCustomImage: boolean;
   includesAdvancedStats: boolean;
-  includesDetailedAnalytics: boolean; // Controls access to /admin/raffle-analytics
+  includesDetailedAnalytics: boolean; 
   includesFeaturedListing: boolean;
   includesAiReceiptValidation: boolean;
-  includesAutomatedBackups: boolean;
+  includesAutomatedBackups: boolean; 
   includesActivityLog: boolean;
+  includesBackupRestore: boolean; 
   includesExclusiveSupport: boolean;
 
   featureListIds: string[];
@@ -30,22 +31,23 @@ export interface PlanDetails {
 }
 
 export const ALL_PLAN_FEATURES_DEFINITIONS: PlanFeatureItem[] = [
-  { id: 'raffleLimit', text: "Límite de rifas activas" },
-  { id: 'ticketLimit', text: "Límite de boletos por rifa" },
+  { id: 'raffleLimit', text: "Límite de rifas activas" }, // Texto genérico, se especializa en getFeatureStatus
+  { id: 'ticketLimit', text: "Límite de boletos por rifa" }, // Texto genérico
   { id: 'editRaffles', text: "Edición de rifas" },
-  { id: 'basicStats', text: "Acceso a estadísticas básicas de participación" },
-  { id: 'whatsappIntegration', text: "Integración con WhatsApp para contactar participantes" },
-  { id: 'downloadLists', text: "Descarga de lista de boletos y comprobantes" },
-  { id: 'publicProfile', text: "Perfil público del organizador visible" },
-  { id: 'publicRatingsVisible', text: "Visibilidad de calificaciones públicas" },
-  { id: 'manualPaymentConfirmation', text: "Permite confirmar o rechazar pagos manuales" },
-  { id: 'customImagePerRaffle', text: "Imagen personalizada en cada rifa" },
-  { id: 'detailedStats', text: "Estadísticas detalladas y filtros avanzados" }, // Different from the analytics page
-  { id: 'analyticsAccess', text: "Acceso al panel de analíticas de rifas detallado" },
-  { id: 'featuredListing', text: "Posicionamiento preferencial en la lista de rifas" },
-  { id: 'aiReceiptValidation', text: "Acceso a funciones con IA para validación de recibos" },
-  { id: 'automatedBackups', text: "Copias de seguridad automáticas (datos de tus rifas)" },
-  { id: 'activityLogAccess', text: "Registro de actividad en su cuenta" },
+  { id: 'basicStats', text: "Ver estadísticas básicas" },
+  { id: 'whatsappIntegration', text: "Contactar por WhatsApp" },
+  { id: 'downloadLists', text: "Descarga de listas" },
+  { id: 'publicProfile', text: "Perfil público visible" },
+  { id: 'publicRatingsVisible', text: "Calificaciones públicas visibles" },
+  { id: 'manualPaymentConfirmation', text: "Gestionar pagos" },
+  { id: 'customImagePerRaffle', text: "Imagen personalizada" },
+  { id: 'detailedStats', text: "Estadísticas detalladas" }, // Usado internamente para pro
+  { id: 'analyticsAccess', text: "Acceso a Analíticas Avanzadas" },
+  { id: 'featuredListing', text: "Rifas destacadas" },
+  { id: 'aiReceiptValidation', text: "Validación IA de recibos" },
+  { id: 'automatedBackups', text: "Copias de seguridad automáticas" },
+  { id: 'backupRestoreAccess', text: "Respaldo y Restauración de datos" },
+  { id: 'activityLogAccess', text: "Panel de actividad" },
   { id: 'exclusiveSupport', text: "Soporte exclusivo 1 a 1" },
 ];
 
@@ -59,25 +61,32 @@ export const PLAN_CONFIG: Record<PlanName, PlanDetails> = {
     canEditRaffles: false,
     canDisplayRatingsPublicly: false,
     includesCustomImage: false,
-    includesAdvancedStats: true,
-    includesDetailedAnalytics: false, // Free plan does NOT include detailed analytics page
+    includesAdvancedStats: true, 
+    includesDetailedAnalytics: false,
     includesFeaturedListing: false,
     includesAiReceiptValidation: false,
     includesAutomatedBackups: false,
     includesActivityLog: false,
+    includesBackupRestore: false, 
     includesExclusiveSupport: false,
     featureListIds: [
+      // Incluidas
       'raffleLimit',
       'ticketLimit',
-      'editRaffles',
-      'basicStats',
+      'manualPaymentConfirmation',
+      'basicStats', 
       'whatsappIntegration',
       'downloadLists',
       'publicProfile',
-      'publicRatingsVisible',
-      'manualPaymentConfirmation'
+      // No incluidas (el texto se definirá en getFeatureStatus)
+      'editRaffles',
+      'customImagePerRaffle',
+      'featuredListing',
+      'analyticsAccess', 
+      'backupRestoreAccess',
+      'activityLogAccess',
     ],
-    tagline: "Ideal para probar la plataforma sin compromiso. Suficiente para completar tus primeras rifas.",
+    tagline: "Ideal para probar. Crea hasta 2 rifas, gestiona pagos, registra ganadores y accede a estadísticas básicas.",
   },
   standard: {
     name: 'standard',
@@ -89,27 +98,32 @@ export const PLAN_CONFIG: Record<PlanName, PlanDetails> = {
     editRaffleLimit: 5,
     canDisplayRatingsPublicly: false,
     includesCustomImage: true,
-    includesAdvancedStats: true,
-    includesDetailedAnalytics: false, // Standard plan does NOT include detailed analytics page
-    includesFeaturedListing: false,
+    includesAdvancedStats: true, 
+    includesDetailedAnalytics: false, 
+    includesFeaturedListing: true, 
     includesAiReceiptValidation: false,
     includesAutomatedBackups: false,
     includesActivityLog: false,
+    includesBackupRestore: false,
     includesExclusiveSupport: false,
     featureListIds: [
       'raffleLimit',
       'ticketLimit',
       'editRaffles',
       'customImagePerRaffle',
-      // 'detailedStats', // Removed as per request
+      'basicStats', 
       'whatsappIntegration',
       'downloadLists',
-      'publicProfile',
-      'publicRatingsVisible',
+      'publicProfile', 
       'manualPaymentConfirmation',
       'featuredListing',
+      'analyticsAccess', // No incluido
+      'backupRestoreAccess', // No incluido
+      'activityLogAccess', // No incluido
+      'aiReceiptValidation', // No incluido
+      'exclusiveSupport', // No incluido
     ],
-    tagline: "Recomendado para rifadores activos que desean más control y personalización sin ir al límite.",
+    tagline: "Más control y personalización, con edición limitada de rifas e imágenes propias.",
   },
   pro: {
     name: 'pro',
@@ -121,31 +135,32 @@ export const PLAN_CONFIG: Record<PlanName, PlanDetails> = {
     canDisplayRatingsPublicly: true,
     includesCustomImage: true,
     includesAdvancedStats: true,
-    includesDetailedAnalytics: true, // Pro plan DOES include detailed analytics page
+    includesDetailedAnalytics: true,
     includesFeaturedListing: true,
     includesAiReceiptValidation: true,
-    includesAutomatedBackups: true,
+    includesAutomatedBackups: true, 
     includesActivityLog: true,
+    includesBackupRestore: true, 
     includesExclusiveSupport: true,
     featureListIds: [
       'raffleLimit',
       'ticketLimit',
       'editRaffles',
       'customImagePerRaffle',
-      'detailedStats', // This feature remains for Pro
-      'analyticsAccess', // Feature ID for the detailed analytics page
+      'analyticsAccess', 
       'whatsappIntegration',
       'downloadLists',
       'publicProfile',
-      'publicRatingsVisible', // Pro can display ratings
+      'publicRatingsVisible', 
       'manualPaymentConfirmation',
       'aiReceiptValidation',
       'featuredListing',
       'automatedBackups',
+      'backupRestoreAccess', 
       'activityLogAccess',
       'exclusiveSupport',
     ],
-    tagline: "La solución más completa para profesionales de las rifas.",
+    tagline: "La solución completa para profesionales: sin límites, con IA y soporte prioritario.",
   },
 };
 
@@ -156,101 +171,83 @@ export const getFeatureStatus = (featureId: string, plan: PlanDetails): { includ
   let text = ALL_PLAN_FEATURES_DEFINITIONS.find(f => f.id === featureId)?.text || featureId;
 
   switch (featureId) {
+    // --- CARACTERÍSTICAS INCLUIDAS POR DEFECTO O CON LÓGICA ESPECIAL ---
     case 'raffleLimit':
       included = plan.raffleLimit > 0 || plan.raffleLimit === Infinity;
-      if (plan.name === 'free') text = "Hasta 2 rifas activas simultáneamente";
-      else if (plan.name === 'standard') text = "Hasta 10 rifas activas al mismo tiempo";
+      if (plan.name === 'free') text = "Crear hasta 2 rifas activas";
+      else if (plan.name === 'standard') text = "Crear hasta 10 rifas activas";
       else if (plan.name === 'pro') text = "Rifas activas ilimitadas";
       break;
     case 'ticketLimit':
       included = plan.maxTicketsPerRaffle > 0 || plan.maxTicketsPerRaffle === Infinity;
-      if (plan.name === 'free') text = "50 boletos por rifa como máximo";
-      else if (plan.name === 'standard') text = "100 boletos por rifa";
+      if (plan.name === 'free') text = "Hasta 50 boletos por rifa";
+      else if (plan.name === 'standard') text = "Hasta 100 boletos por rifa";
       else if (plan.name === 'pro') text = "Boletos ilimitados por rifa";
       break;
+    case 'manualPaymentConfirmation':
+      included = true; text = "Gestionar pagos (confirmar/rechazar)";
+      break;
+    case 'basicStats':
+      included = plan.includesAdvancedStats; // Todos los planes tienen al menos esto
+      text = "Ver estadísticas básicas de participación";
+      break;
+    case 'whatsappIntegration':
+      included = true; text = "Contactar participantes por WhatsApp";
+      break;
+    case 'downloadLists':
+      included = true; text = "Descarga de lista de boletos y participantes";
+      break;
+    case 'publicProfile':
+      included = true;
+      text = plan.canDisplayRatingsPublicly ? "Perfil público con calificación visible" : "Perfil público visible (sin calificación)";
+      break;
+
+    // --- CARACTERÍSTICAS CON LÓGICA DE INCLUSIÓN ESPECÍFICA DEL PLAN ---
     case 'editRaffles':
       included = !!plan.canEditRaffles;
       if (plan.name === 'free') text = "Edición de rifas no disponible";
-      else if (plan.name === 'standard') text = `Edición habilitada para hasta ${plan.editRaffleLimit || 0} rifas propias`;
-      else if (plan.name === 'pro') text = "Edición completa de todas sus rifas";
-      break;
-    case 'basicStats':
-      included = plan.includesAdvancedStats; // Assuming basic stats are part of advanced stats logic
-      text = "Acceso a estadísticas básicas de participación";
-      break;
-    case 'detailedStats':
-      included = plan.includesAdvancedStats; // Controlled by the flag
-      if (plan.name === 'pro') text = "Estadísticas completas y filtros avanzados";
-      else text = "Estadísticas detalladas y filtros avanzados"; // Default text if not pro, though it shouldn't be listed
-      break;
-    case 'analyticsAccess':
-      included = plan.includesDetailedAnalytics; // Driven by the flag
-      text = "Acceso al panel de analíticas de rifas detallado";
-      break;
-    case 'publicProfile':
-      included = true; // All plans have a public profile
-      if (plan.canDisplayRatingsPublicly) text = "Perfil público destacado y calificación visible";
-      else text = "Perfil público del organizador visible (sin calificación)";
-      break;
-    case 'publicRatingsVisible':
-      included = plan.canDisplayRatingsPublicly;
-      if (plan.canDisplayRatingsPublicly) text = "Calificaciones públicas visibles en perfil";
-      else text = "Calificaciones públicas no visibles en perfil";
+      else if (plan.name === 'standard') text = `Edición limitada a ${plan.editRaffleLimit || 0} rifas propias`;
+      else if (plan.name === 'pro') text = "Edición completa de rifas";
       break;
     case 'customImagePerRaffle':
       included = plan.includesCustomImage;
-      text = "Imagen personalizada en cada rifa";
+      text = plan.includesCustomImage ? "Imagen personalizada en cada rifa" : "Imagen Personalizada no disponible";
       break;
     case 'featuredListing':
       included = plan.includesFeaturedListing;
-      if (plan.includesFeaturedListing) text = "Posicionamiento preferencial en la lista de rifas";
-      else text = "Rifas no aparecen como destacadas o en prioridad";
+      text = plan.includesFeaturedListing ? "Posicionamiento preferencial de rifas" : "Rifas no aparecen como destacadas";
       break;
-    case 'aiReceiptValidation':
-      included = plan.includesAiReceiptValidation;
-      if (plan.includesAiReceiptValidation) text = "Acceso a funciones con IA para validación de recibos";
-      else text = "Validación de recibos con IA no incluida";
+    case 'analyticsAccess':
+      included = plan.includesDetailedAnalytics;
+      text = plan.includesDetailedAnalytics ? "Acceso al panel de analíticas detallado" : "Estadísticas avanzadas no disponibles";
       break;
-    case 'automatedBackups':
-      included = plan.includesAutomatedBackups;
-      text = "Copias de seguridad automáticas (datos de tus rifas)";
+    case 'backupRestoreAccess':
+      included = plan.includesBackupRestore;
+      text = plan.includesBackupRestore ? "Respaldo y Restauración de datos" : "Respaldo de datos no disponible";
       break;
     case 'activityLogAccess':
       included = plan.includesActivityLog;
-      text = "Registro de actividad en su cuenta";
+      text = plan.includesActivityLog ? "Acceso a Registro de Actividad" : "Panel de actividad no disponible";
       break;
-    case 'exclusiveSupport':
-      included = plan.includesExclusiveSupport;
-      text = "Soporte exclusivo 1 a 1";
-      break;
-    case 'whatsappIntegration':
-      included = true; // Assuming all plans have this
-      text = "Integración con WhatsApp para contactar participantes";
-      break;
-    case 'downloadLists':
-      included = true; // Assuming all plans have this
-      text = "Descarga de lista de boletos y participantes";
-      break;
-    case 'manualPaymentConfirmation':
-      included = true; // Assuming all plans have this
-      text = "Permite confirmar o rechazar pagos manuales";
-      break;
+    
+    // Para PRO específicamente o características booleanas directas
+    case 'publicRatingsVisible': included = plan.canDisplayRatingsPublicly; break;
+    case 'aiReceiptValidation': included = plan.includesAiReceiptValidation; break;
+    case 'automatedBackups': included = plan.includesAutomatedBackups; break;
+    case 'exclusiveSupport': included = plan.includesExclusiveSupport; break;
+    case 'detailedStats': included = plan.includesDetailedAnalytics; break; // Mapeo para consistencia si se usa este ID
+
     default:
-      const featureDef = ALL_PLAN_FEATURES_DEFINITIONS.find(f => f.id === featureId);
-      if (featureDef) {
-        text = featureDef.text;
-        // Generic way to check boolean flags starting with "includes"
-        const propName = `includes${featureId.charAt(0).toUpperCase() + featureId.slice(1)}`;
-        if (propName in plan && typeof (plan as any)[propName] === 'boolean') {
-          included = (plan as any)[propName] as boolean;
-        } else {
-          // Fallback for other types of features or if naming convention isn't "includes"
-          // This part might need more specific logic if features are very diverse
-          included = false; 
-        }
+      // Intenta inferir para otras características booleanas si no están en los casos anteriores
+      const propName = `includes${featureId.charAt(0).toUpperCase() + featureId.slice(1).replace(/Access$/, '')}`;
+      if (propName in plan && typeof (plan as any)[propName] === 'boolean') {
+        included = (plan as any)[propName] as boolean;
       } else {
+        // Si no se encuentra, se asume no incluida para evitar mostrarla como tal por error.
+        // Esto podría pasar si un ID en featureListIds no tiene un caso aquí.
+        console.warn(`[PlanConfig] Feature ID '${featureId}' no tiene lógica de inclusión explícita en getFeatureStatus. Asumiendo no incluida.`);
         included = false;
-        text = featureId; // Fallback to featureId if no definition found
+        text = `Característica '${featureId}' no definida para este plan`;
       }
   }
   return { included, text };
@@ -260,9 +257,8 @@ export function getPlanDetails(planName?: PlanName | null): PlanDetails {
   if (planName && PLAN_CONFIG[planName]) {
     return PLAN_CONFIG[planName];
   }
-  // Default "empty" plan details for users without an active plan or if plan is unrecognized
   return {
-    name: 'free', // Default to 'free' or a specific "no plan" identifier if preferred
+    name: 'free', 
     displayName: 'Sin Plan / Vencido',
     durationDays: 0,
     raffleLimit: 0,
@@ -276,9 +272,9 @@ export function getPlanDetails(planName?: PlanName | null): PlanDetails {
     includesAiReceiptValidation: false,
     includesAutomatedBackups: false,
     includesActivityLog: false,
+    includesBackupRestore: false,
     includesExclusiveSupport: false,
     featureListIds: [],
     tagline: "Contacta a soporte para activar o renovar un plan.",
   };
 }
-

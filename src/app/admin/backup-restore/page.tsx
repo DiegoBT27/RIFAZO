@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Download, Upload, AlertTriangle, DatabaseZap, CheckCircle, XCircle } from 'lucide-react';
+import { Loader2, Download, Upload, AlertTriangle, DatabaseZap, CheckCircle, XCircle, ShieldAlert } from 'lucide-react';
 import { exportFirestoreCollections, importFirestoreCollections } from '@/lib/firebase/firestoreService';
 import {
   AlertDialog,
@@ -23,8 +23,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { getPlanDetails } from '@/lib/config/plans';
+import PlanLimitDialog from '@/components/admin/PlanLimitDialog';
 
-const COLLECTIONS_TO_BACKUP = ['users', 'raffles', 'participations', 'activityLogs', 'raffleResults'];
+const FOUNDER_COLLECTIONS_TO_BACKUP = ['users', 'raffles', 'participations', 'activityLogs', 'raffleResults'];
+const ADMIN_COLLECTIONS_TO_BACKUP = ['raffles', 'participations', 'activityLogs', 'raffleResults'];
 
 export default function BackupRestorePage() {
   const { user, isLoggedIn, isLoading: authIsLoading } = useAuth();
@@ -37,15 +40,34 @@ export default function BackupRestorePage() {
   const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false);
   const [restoreSummary, setRestoreSummary] = useState<string[]>([]);
   const [restoreErrors, setRestoreErrors] = useState<string[]>([]);
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [isPlanLimitDialogOpen, setIsPlanLimitDialogOpen] = useState(false);
+  const [pageIsLoading, setPageIsLoading] = useState(true);
 
 
   useEffect(() => {
     if (!authIsLoading) {
       if (!isLoggedIn) {
         router.replace('/login');
-      } else if (user?.role !== 'founder') {
-        router.replace('/admin');
+        setPageIsLoading(false);
+        return;
       }
+      if (user?.role === 'founder') {
+        setAccessDenied(false);
+      } else if (user?.role === 'admin') {
+        const planDetails = getPlanDetails(user.planActive ? user.plan : null);
+        if (!planDetails.includesBackupRestore) {
+          setAccessDenied(true);
+          setIsPlanLimitDialogOpen(true);
+        } else {
+          setAccessDenied(false);
+        }
+      } else { 
+        router.replace('/admin'); 
+      }
+    }
+    if (!authIsLoading) {
+      setPageIsLoading(false);
     }
   }, [isLoggedIn, user, authIsLoading, router]);
 
@@ -53,16 +75,34 @@ export default function BackupRestorePage() {
     setIsBackingUp(true);
     setRestoreSummary([]);
     setRestoreErrors([]);
-    toast({ title: 'Iniciando Copia de Seguridad', description: 'Exportando datos de Firestore...' });
+    
+    let collectionsForBackup: string[] = [];
+    let usernameForExport: string | undefined = undefined;
+    let toastMessage = 'Exportando datos...';
+
+    if (user?.role === 'admin') {
+      collectionsForBackup = ADMIN_COLLECTIONS_TO_BACKUP;
+      usernameForExport = user.username;
+      toastMessage = 'Exportando datos de tus rifas...';
+    } else if (user?.role === 'founder') {
+      collectionsForBackup = FOUNDER_COLLECTIONS_TO_BACKUP;
+      toastMessage = 'Exportando todos los datos de la plataforma...';
+    } else {
+      toast({ title: 'Error de Permiso', description: 'No tienes permiso para realizar esta acción.', variant: 'destructive' });
+      setIsBackingUp(false);
+      return;
+    }
+
+    toast({ title: 'Iniciando Copia de Seguridad', description: toastMessage });
     try {
-      const data = await exportFirestoreCollections(COLLECTIONS_TO_BACKUP);
+      const data = await exportFirestoreCollections(collectionsForBackup, usernameForExport);
       const jsonString = JSON.stringify(data, null, 2);
       const blob = new Blob([jsonString], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       const now = new Date();
       const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
-      link.download = `rifapati_backup_${timestamp}.json`;
+      link.download = `rifapati_backup_${user?.role === 'admin' ? user.username + '_' : ''}${timestamp}.json`;
       link.href = url;
       document.body.appendChild(link);
       link.click();
@@ -92,7 +132,13 @@ export default function BackupRestorePage() {
       toast({ title: 'Error de Restauración', description: 'Por favor, selecciona un archivo de respaldo.', variant: 'destructive' });
       return;
     }
-    setIsRestoreConfirmOpen(false); // Close confirmation dialog
+    // Ensure only founder can restore
+    if (user?.role !== 'founder') {
+      toast({ title: 'Error de Permiso', description: 'Solo los fundadores pueden restaurar datos.', variant: 'destructive' });
+      return;
+    }
+
+    setIsRestoreConfirmOpen(false); 
     setIsRestoring(true);
     toast({ title: 'Iniciando Restauración', description: 'Importando datos desde el archivo. Esto puede tardar...' });
 
@@ -106,19 +152,25 @@ export default function BackupRestorePage() {
           }
           const dataToImport = JSON.parse(result);
           
-          // Validate basic structure
           let isValidStructure = true;
-          for (const col of COLLECTIONS_TO_BACKUP) {
+          // For founder, check against FOUNDER_COLLECTIONS_TO_BACKUP
+          for (const col of FOUNDER_COLLECTIONS_TO_BACKUP) {
             if (!dataToImport[col] || !Array.isArray(dataToImport[col])) {
-              isValidStructure = false;
-              break;
+               // Allow missing 'users' if it was an admin backup, though admin shouldn't be able to restore
+               if (col === 'users' && !Object.keys(dataToImport).includes('users')) {
+                 console.warn("Archivo de respaldo no contiene la colección 'users'. Si es un respaldo de admin, esto es esperado pero la restauración completa fallará si se intenta con este archivo.");
+                 // This path should ideally not be taken by an admin due to role checks.
+               } else {
+                isValidStructure = false;
+                break;
+               }
             }
           }
           if (!isValidStructure) {
-            throw new Error('El archivo de respaldo no tiene la estructura esperada para las colecciones.');
+            throw new Error('El archivo de respaldo no tiene la estructura esperada para una restauración completa de fundador.');
           }
 
-          const importResult = await importFirestoreCollections(dataToImport, COLLECTIONS_TO_BACKUP);
+          const importResult = await importFirestoreCollections(dataToImport, FOUNDER_COLLECTIONS_TO_BACKUP);
           
           setRestoreSummary(importResult.summary);
           setRestoreErrors(importResult.errors);
@@ -140,7 +192,6 @@ export default function BackupRestorePage() {
         } finally {
           setIsRestoring(false);
           setSelectedFile(null); 
-          // Reset file input visually (though state is already null)
           const fileInput = document.getElementById('restoreFile') as HTMLInputElement;
           if (fileInput) fileInput.value = '';
         }
@@ -157,8 +208,17 @@ export default function BackupRestorePage() {
       setIsRestoring(false);
     }
   };
+  
+  const backupDescription = user?.role === 'founder'
+    ? 'Descarga una copia de seguridad de TODAS las colecciones de Firestore en formato JSON. Guarda este archivo en un lugar seguro.'
+    : 'Descarga una copia de seguridad de TUS rifas, participaciones y registros de actividad. Guarda este archivo en un lugar seguro.';
+  
+  const backupCollectionsList = user?.role === 'founder'
+    ? FOUNDER_COLLECTIONS_TO_BACKUP.join(', ')
+    : ADMIN_COLLECTIONS_TO_BACKUP.join(', ');
 
-  if (authIsLoading || (!isLoggedIn && user?.role !== 'founder')) {
+
+  if (authIsLoading || pageIsLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
         <Loader2 className="animate-spin h-12 w-12 text-primary mx-auto mb-4" />
@@ -166,6 +226,27 @@ export default function BackupRestorePage() {
       </div>
     );
   }
+
+  if (accessDenied) {
+    return (
+        <>
+            <PlanLimitDialog
+                isOpen={isPlanLimitDialogOpen}
+                onOpenChange={(isOpen) => {
+                    setIsPlanLimitDialogOpen(isOpen);
+                    if (!isOpen) router.replace('/admin'); 
+                }}
+                featureName="la copia de seguridad y restauración"
+            />
+            <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
+                <ShieldAlert className="h-12 w-12 text-destructive mx-auto mb-4" />
+                <p className="text-destructive font-semibold">Acceso Denegado por Plan</p>
+                <p className="text-muted-foreground">Tu plan no incluye esta funcionalidad.</p>
+            </div>
+        </>
+     );
+  }
+
 
   return (
     <div>
@@ -180,8 +261,7 @@ export default function BackupRestorePage() {
               <Download className="mr-2 h-5 w-5" /> Crear Copia de Seguridad
             </CardTitle>
             <CardDescription>
-              Descarga una copia de seguridad de todas las colecciones importantes de Firestore en formato JSON.
-              Guarda este archivo en un lugar seguro.
+              {backupDescription}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -190,7 +270,7 @@ export default function BackupRestorePage() {
               {isBackingUp ? 'Creando Copia...' : 'Descargar Copia de Seguridad'}
             </Button>
             <p className="text-xs text-muted-foreground mt-2">
-              Colecciones incluidas: {COLLECTIONS_TO_BACKUP.join(', ')}.
+              Colecciones incluidas: {backupCollectionsList}.
             </p>
           </CardContent>
         </Card>
@@ -202,6 +282,7 @@ export default function BackupRestorePage() {
             </CardTitle>
             <CardDescription>
               Sube un archivo JSON previamente descargado para restaurar los datos de Firestore.
+              <span className="font-bold text-destructive block mt-1"> (Solo para Fundadores. Esta acción reemplazará todos los datos existentes).</span>
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -213,7 +294,7 @@ export default function BackupRestorePage() {
                   type="file"
                   accept=".json"
                   onChange={handleFileChange}
-                  disabled={isRestoring || isBackingUp}
+                  disabled={user?.role !== 'founder' || isRestoring || isBackingUp}
                   className="text-xs"
                 />
               </div>
@@ -222,12 +303,12 @@ export default function BackupRestorePage() {
                   if (selectedFile) setIsRestoreConfirmOpen(true);
                   else toast({ title: 'No hay archivo', description: 'Selecciona un archivo .json para restaurar.', variant: 'destructive' });
                 }}
-                disabled={!selectedFile || isRestoring || isBackingUp}
+                disabled={user?.role !== 'founder' || !selectedFile || isRestoring || isBackingUp}
                 variant="destructive"
                 className="w-full"
               >
                 {isRestoring ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-                {isRestoring ? 'Restaurando...' : 'Restaurar Datos'}
+                {isRestoring ? 'Restaurando...' : (user?.role !== 'founder' ? 'Restaurar (Solo Fundador)' : 'Restaurar Datos')}
               </Button>
             </div>
           </CardContent>
@@ -259,12 +340,12 @@ export default function BackupRestorePage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center">
-              <AlertTriangle className="mr-2 h-6 w-6 text-destructive" /> ¡ADVERTENCIA IMPORTANTE!
+              <AlertTriangle className="mr-2 h-6 w-6 text-destructive" /> ¡ADVERTENCIA IMPORTANTE (FUNDADOR)!
             </AlertDialogTitle>
             <AlertDialogDescription className="text-base">
               Estás a punto de restaurar los datos desde el archivo <span className="font-semibold">{selectedFile?.name}</span>.
               <br /><br />
-              <span className="font-bold text-destructive">Esta acción ELIMINARÁ PERMANENTEMENTE todos los datos existentes en las colecciones ({COLLECTIONS_TO_BACKUP.join(', ')}) antes de importar los nuevos datos.</span>
+              <span className="font-bold text-destructive">Esta acción ELIMINARÁ PERMANENTEMENTE todos los datos existentes en las colecciones ({FOUNDER_COLLECTIONS_TO_BACKUP.join(', ')}) antes de importar los nuevos datos.</span>
               <br /><br />
               Esta operación no se puede deshacer. Asegúrate de que el archivo seleccionado sea correcto y de que realmente deseas proceder.
             </AlertDialogDescription>
@@ -282,6 +363,15 @@ export default function BackupRestorePage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+       <PlanLimitDialog
+            isOpen={isPlanLimitDialogOpen && accessDenied}
+            onOpenChange={(isOpen) => {
+                setIsPlanLimitDialogOpen(isOpen);
+                if (!isOpen && accessDenied) router.replace('/admin');
+            }}
+            featureName="la copia de seguridad y restauración"
+        />
     </div>
   );
 }
+

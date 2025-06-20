@@ -6,23 +6,22 @@ import SectionTitle from '@/components/shared/SectionTitle';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { PLAN_CONFIG, PLAN_NAMES_ORDERED, getFeatureStatus } from '@/lib/config/plans';
-import { Check, X, CalendarDays, Clock, MessageSquare } from 'lucide-react'; 
+import { Check, X, CalendarDays, Clock } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { differenceInDays, differenceInHours, differenceInMinutes, isPast } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { useRouter } from 'next/navigation'; // Added for router.push
 
 const ADMIN_WHATSAPP_NUMBER = "584141135956";
 
 export default function PlansPage() {
   const { user } = useAuth();
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const router = useRouter(); // Added for router.push
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    const timerId = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 60000);
-    return () => clearInterval(timerId);
+    setIsClient(true);
   }, []);
 
   const handleContactToHire = (planName: string) => {
@@ -47,23 +46,24 @@ export default function PlansPage() {
           
           let countdownDisplay = null;
           if (isCurrentUserPlan && user?.planEndDate) {
-            const endDate = new Date(user.planEndDate);
-            if (isPast(endDate)) {
-              countdownDisplay = <p className="text-xs text-destructive font-semibold mt-1.5 flex items-center justify-center"><Clock className="h-3.5 w-3.5 mr-1" />Plan vencido</p>;
+            if (!isClient) {
+              countdownDisplay = <p className="text-xs text-muted-foreground italic mt-1.5 flex items-center justify-center"><Clock className="h-3.5 w-3.5 mr-1" />Cargando...</p>;
             } else {
-              const daysLeft = differenceInDays(endDate, currentTime);
-              if (daysLeft > 0) {
-                countdownDisplay = <p className="text-xs text-green-600 font-semibold mt-1.5 flex items-center justify-center"><Clock className="h-3.5 w-3.5 mr-1" />{daysLeft} {daysLeft === 1 ? 'día restante' : 'días restantes'}</p>;
+              const endDate = new Date(user.planEndDate);
+              const now = new Date();
+              if (isPast(endDate, now)) {
+                countdownDisplay = <p className="text-xs text-destructive font-semibold mt-1.5 flex items-center justify-center"><Clock className="h-3.5 w-3.5 mr-1" />Plan vencido</p>;
               } else {
-                const hoursLeft = differenceInHours(endDate, currentTime);
-                if (hoursLeft > 0) {
-                  countdownDisplay = <p className="text-xs text-yellow-600 font-semibold mt-1.5 flex items-center justify-center"><Clock className="h-3.5 w-3.5 mr-1" />{hoursLeft} {hoursLeft === 1 ? 'hora restante' : 'horas restantes'}</p>;
+                const daysLeft = differenceInDays(endDate, now);
+                if (daysLeft > 0) {
+                  countdownDisplay = <p className="text-xs text-green-600 font-semibold mt-1.5 flex items-center justify-center"><Clock className="h-3.5 w-3.5 mr-1" />{daysLeft} {daysLeft === 1 ? 'día restante' : 'días restantes'}</p>;
                 } else {
-                  const minutesLeft = differenceInMinutes(endDate, currentTime);
-                  if (minutesLeft > 0) {
-                    countdownDisplay = <p className="text-xs text-orange-500 font-semibold mt-1.5 flex items-center justify-center"><Clock className="h-3.5 w-3.5 mr-1" />{minutesLeft} {minutesLeft === 1 ? 'minuto restante' : 'minutos restantes'}</p>;
+                  const hoursLeft = differenceInHours(endDate, now);
+                  if (hoursLeft > 0) {
+                    countdownDisplay = <p className="text-xs text-yellow-600 font-semibold mt-1.5 flex items-center justify-center"><Clock className="h-3.5 w-3.5 mr-1" />{hoursLeft} {hoursLeft === 1 ? 'hora restante' : 'horas restantes'}</p>;
                   } else {
-                    countdownDisplay = <p className="text-xs text-destructive font-semibold mt-1.5 flex items-center justify-center"><Clock className="h-3.5 w-3.5 mr-1" />Vence muy pronto / Vencido</p>;
+                    const minutesLeft = differenceInMinutes(endDate, now);
+                    countdownDisplay = <p className="text-xs text-orange-500 font-semibold mt-1.5 flex items-center justify-center"><Clock className="h-3.5 w-3.5 mr-1" />{minutesLeft > 0 ? `${minutesLeft} ${minutesLeft === 1 ? 'minuto restante' : 'minutos restantes'}` : 'Vence muy pronto / Vencido'}</p>;
                   }
                 }
               }
@@ -71,6 +71,20 @@ export default function PlansPage() {
           }
 
           const isContratarButton = !(isCurrentUserPlan && plan.name !== 'free');
+          let buttonText = "CONTRATAR"; // Default
+          if (isCurrentUserPlan && plan.name !== 'free') {
+            buttonText = "Ya tienes este plan";
+          } else if (plan.name === 'free') {
+            buttonText = "GRATIS";
+          } else if (plan.name === 'standard') {
+            buttonText = "2$ Semanal";
+          } else if (plan.name === 'pro') {
+            buttonText = "5$ por 30 días";
+          }
+          if (isCurrentUserPlan && plan.name === 'free') {
+            buttonText = "GRATIS (Tu Plan Actual)";
+          }
+
 
           return (
             <Card key={plan.name} className={cn(
@@ -122,7 +136,7 @@ export default function PlansPage() {
                   disabled={isCurrentUserPlan && plan.name !== 'free'}
                   variant={isContratarButton ? 'default' : 'outline'}
                 >
-                  {isContratarButton ? 'CONTRATAR' : 'Ya tienes este plan'}
+                  {buttonText}
                 </Button>
               </CardFooter>
             </Card>
@@ -142,3 +156,4 @@ export default function PlansPage() {
     </div>
   );
 }
+

@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { AlertCircle, Loader2, KeyRound, FileText, ShieldAlert } from 'lucide-react';
+import { AlertCircle, Loader2, KeyRound, FileText, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -48,9 +48,10 @@ const LS_PERMANENTLY_LOCKED_KEY = 'rifazo_permanentlyLocked';
 export default function LoginForm() {
   const { login } = useAuth();
   const [isFormLoading, setIsFormLoading] = useState(false);
-  const [loginError, setLoginError] = useState<string | null>(null); // Renombrado para claridad
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [isPrivacyPolicyOpen, setIsPrivacyPolicyOpen] = useState(false);
   const [isTermsOpen, setIsTermsOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const [loginAttempts, setLoginAttempts] = useState(0);
   const [isTemporarilyLocked, setIsTemporarilyLocked] = useState(false);
@@ -160,8 +161,7 @@ export default function LoginForm() {
     if (!loginResult.success) {
       if (loginResult.reason === 'blocked') {
         setLoginError("Su cuenta ha sido bloqueada. Por favor, contacte a soporte");
-        // No actualizamos loginAttempts aquí, ya que no es un fallo de credenciales
-      } else { // 'credentials_invalid' o cualquier otro error no manejado específicamente
+      } else { 
         handleFailedLoginAttempt(data.username);
       }
     } else {
@@ -241,13 +241,24 @@ export default function LoginForm() {
               <div className="relative">
                   <Input
                     id="password-login"
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     {...register("password")}
                     placeholder="tu contraseña"
                     disabled={disableForm}
                     className="pr-10"
                   />
-                  <KeyRound className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 transform -translate-y-1/2 h-7 w-7 text-muted-foreground hover:bg-transparent hover:text-accent"
+                    onClick={() => setShowPassword(!showPassword)}
+                    disabled={disableForm}
+                    tabIndex={-1} 
+                  >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    <span className="sr-only">{showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}</span>
+                  </Button>
               </div>
               {errors.password && <p className="text-xs text-destructive mt-1">{errors.password.message}</p>}
             </div>
@@ -336,7 +347,6 @@ export default function LoginForm() {
         </CardFooter>
       </Card>
 
-      {/* Dialog for Privacy Policy */}
       <Dialog open={isPrivacyPolicyOpen} onOpenChange={setIsPrivacyPolicyOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -402,7 +412,6 @@ export default function LoginForm() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog for Terms and Conditions */}
       <Dialog open={isTermsOpen} onOpenChange={setIsTermsOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -450,4 +459,3 @@ export default function LoginForm() {
     </>
   );
 }
-

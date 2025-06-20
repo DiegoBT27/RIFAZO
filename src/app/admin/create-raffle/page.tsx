@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import SectionTitle from '@/components/shared/SectionTitle';
 import CreateRaffleForm from '@/components/admin/CreateRaffleForm';
 import { Loader2 } from 'lucide-react';
+import type { Raffle } from '@/types'; // Import Raffle type
 
 export default function CreateRafflePage() {
   const { user, isLoggedIn, isLoading: authIsLoading } = useAuth();
@@ -22,6 +23,12 @@ export default function CreateRafflePage() {
     }
   }, [isLoggedIn, user, authIsLoading, router]);
 
+  const handleRaffleCreationSuccess = (newRaffle: Raffle) => {
+    // El toast de éxito ya se muestra desde CreateRaffleForm
+    // Aquí solo nos encargamos de la redirección.
+    router.push('/admin/my-raffles');
+  };
+
   if (authIsLoading || !isLoggedIn || !(user?.role === 'admin' || user?.role === 'founder')) { 
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
@@ -33,7 +40,7 @@ export default function CreateRafflePage() {
   return (
     <div>
       <SectionTitle>Crear Nueva Rifa</SectionTitle>
-      <CreateRaffleForm />
+      <CreateRaffleForm onSuccess={handleRaffleCreationSuccess} />
     </div>
   );
 }
