@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useForm, type SubmitHandler, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogClose,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -48,7 +49,6 @@ const LS_PERMANENTLY_LOCKED_KEY = 'rifazo_permanentlyLocked';
 export default function LoginForm() {
   const { login } = useAuth();
   const [isFormLoading, setIsFormLoading] = useState(false);
-  const [loginError, setLoginError] = useState<string | null>(null);
   const [isPrivacyPolicyOpen, setIsPrivacyPolicyOpen] = useState(false);
   const [isTermsOpen, setIsTermsOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -59,25 +59,35 @@ export default function LoginForm() {
   const [lockoutTimeRemaining, setLockoutTimeRemaining] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+  const [isCredentialErrorDialogOpen, setIsCredentialErrorDialogOpen] = useState(false);
+  const [credentialErrorDialogMessage, setCredentialErrorDialogMessage] = useState("Nombre de usuario o contraseña incorrectos.");
+
+
   useEffect(() => {
-    const storedAttempts = parseInt(localStorage.getItem(LS_LOGIN_ATTEMPTS_KEY) || '0', 10);
-    const storedLockoutExpiry = parseInt(localStorage.getItem(LS_LOCKOUT_EXPIRY_KEY) || '0', 10);
-    const storedPermanentlyLocked = localStorage.getItem(LS_PERMANENTLY_LOCKED_KEY) === 'true';
+    try {
+      const storedAttempts = parseInt(localStorage.getItem(LS_LOGIN_ATTEMPTS_KEY) || '0', 10);
+      const storedLockoutExpiry = parseInt(localStorage.getItem(LS_LOCKOUT_EXPIRY_KEY) || '0', 10);
+      const storedPermanentlyLocked = localStorage.getItem(LS_PERMANENTLY_LOCKED_KEY) === 'true';
 
-    setLoginAttempts(storedAttempts);
-    setIsPermanentlyLocked(storedPermanentlyLocked);
+      setLoginAttempts(storedAttempts);
+      setIsPermanentlyLocked(storedPermanentlyLocked);
 
-    if (storedPermanentlyLocked) {
-      return; 
-    }
+      if (storedPermanentlyLocked) {
+        return;
+      }
 
-    if (storedLockoutExpiry > Date.now()) {
-      setIsTemporarilyLocked(true);
-      const remainingTime = Math.ceil((storedLockoutExpiry - Date.now()) / 1000);
-      setLockoutTimeRemaining(remainingTime);
-    } else {
-      localStorage.removeItem(LS_LOCKOUT_EXPIRY_KEY);
-      setIsTemporarilyLocked(false);
+      if (storedLockoutExpiry > Date.now()) {
+        setIsTemporarilyLocked(true);
+        const remainingTime = Math.ceil((storedLockoutExpiry - Date.now()) / 1000);
+        setLockoutTimeRemaining(remainingTime);
+      } else {
+        if (localStorage.getItem(LS_LOCKOUT_EXPIRY_KEY)) {
+          localStorage.removeItem(LS_LOCKOUT_EXPIRY_KEY);
+        }
+        setIsTemporarilyLocked(false);
+      }
+    } catch (e) {
+        console.error("[LoginForm] Error in initial useEffect (localStorage access):", e);
     }
   }, []);
 
@@ -87,9 +97,13 @@ export default function LoginForm() {
       timerRef.current = setInterval(() => {
         setLockoutTimeRemaining((prevTime) => {
           if (prevTime <= 1) {
-            clearInterval(timerRef.current!);
+            if(timerRef.current) clearInterval(timerRef.current!);
             setIsTemporarilyLocked(false);
-            localStorage.removeItem(LS_LOCKOUT_EXPIRY_KEY);
+            try {
+                localStorage.removeItem(LS_LOCKOUT_EXPIRY_KEY);
+            } catch (e) {
+                console.error("[LoginForm] Error removing lockout expiry from localStorage:", e);
+            }
             return 0;
           }
           return prevTime - 1;
@@ -114,61 +128,98 @@ export default function LoginForm() {
   });
 
   const handleFailedLoginAttempt = (username: string) => {
-    const newAttempts = loginAttempts + 1;
-    setLoginAttempts(newAttempts);
-    localStorage.setItem(LS_LOGIN_ATTEMPTS_KEY, newAttempts.toString());
-    setLoginError("Nombre de usuario o contraseña incorrectos.");
-    console.warn(`[LoginForm] Login failed for ${username}. Attempt ${newAttempts}`);
+    try {
+      console.log(`[LoginForm] handleFailedLoginAttempt ENTRY. Current loginAttempts state: ${loginAttempts}, isTemporarilyLocked: ${isTemporarilyLocked}, isPermanentlyLocked: ${isPermanentlyLocked}`);
 
-    if (newAttempts >= MAX_TOTAL_ATTEMPTS_BEFORE_PERM_LOCK) {
-      setIsPermanentlyLocked(true);
-      localStorage.setItem(LS_PERMANENTLY_LOCKED_KEY, 'true');
-      setIsTemporarilyLocked(false); 
-      localStorage.removeItem(LS_LOCKOUT_EXPIRY_KEY);
-      setLockoutTimeRemaining(0);
-      console.warn(`[LoginForm] User ${username} permanently locked out.`);
-    } else if (newAttempts >= MAX_INITIAL_ATTEMPTS_BEFORE_TEMP_LOCK) {
-      const newLockoutExpiry = Date.now() + LOCKOUT_DURATION_SECONDS * 1000;
-      setIsTemporarilyLocked(true);
-      setLockoutTimeRemaining(LOCKOUT_DURATION_SECONDS);
-      localStorage.setItem(LS_LOCKOUT_EXPIRY_KEY, newLockoutExpiry.toString());
-      console.warn(`[LoginForm] User ${username} temporarily locked out for ${LOCKOUT_DURATION_SECONDS}s.`);
+      if (isPermanentlyLocked || isTemporarilyLocked) {
+        console.log('[LoginForm] handleFailedLoginAttempt: Already locked, no further action on error message for this attempt.');
+        return;
+      }
+
+      const newAttempts = loginAttempts + 1;
+      setLoginAttempts(newAttempts); 
+      localStorage.setItem(LS_LOGIN_ATTEMPTS_KEY, newAttempts.toString());
+      console.log(`[LoginForm] handleFailedLoginAttempt MID. newAttempts calculated: ${newAttempts}. MAX_INITIAL_ATTEMPTS: ${MAX_INITIAL_ATTEMPTS_BEFORE_TEMP_LOCK}, MAX_TOTAL_ATTEMPTS: ${MAX_TOTAL_ATTEMPTS_BEFORE_PERM_LOCK}`);
+
+
+      if (newAttempts >= MAX_TOTAL_ATTEMPTS_BEFORE_PERM_LOCK) {
+        setIsPermanentlyLocked(true);
+        setIsTemporarilyLocked(false);
+        setLockoutTimeRemaining(0);
+        localStorage.setItem(LS_PERMANENTLY_LOCKED_KEY, 'true');
+        localStorage.removeItem(LS_LOCKOUT_EXPIRY_KEY);
+        console.warn(`[LoginForm] User ${username} permanently locked. Attempts: ${newAttempts}`);
+      } else if (newAttempts >= MAX_INITIAL_ATTEMPTS_BEFORE_TEMP_LOCK) {
+        const newLockoutExpiry = Date.now() + LOCKOUT_DURATION_SECONDS * 1000;
+        setIsTemporarilyLocked(true);
+        setLockoutTimeRemaining(LOCKOUT_DURATION_SECONDS);
+        localStorage.setItem(LS_LOCKOUT_EXPIRY_KEY, newLockoutExpiry.toString());
+        console.warn(`[LoginForm] User ${username} temporarily locked for ${LOCKOUT_DURATION_SECONDS}s. Attempts: ${newAttempts}`);
+      } else {
+        console.log('[LoginForm] handleFailedLoginAttempt: Path for credentials_invalid. Setting dialog open.');
+        setCredentialErrorDialogMessage("Nombre de usuario o contraseña incorrectos.");
+        setIsCredentialErrorDialogOpen(true);
+      }
+    } catch (e: any) {
+      console.error("[LoginForm] Error inside handleFailedLoginAttempt:", e);
+      setCredentialErrorDialogMessage("Ocurrió un error al procesar el intento de inicio de sesión.");
+      setIsCredentialErrorDialogOpen(true);
     }
   };
 
+
   const resetLoginAttempts = () => {
-    setLoginAttempts(0);
-    setIsTemporarilyLocked(false);
-    setIsPermanentlyLocked(false);
-    setLockoutTimeRemaining(0);
-    localStorage.removeItem(LS_LOGIN_ATTEMPTS_KEY);
-    localStorage.removeItem(LS_LOCKOUT_EXPIRY_KEY);
-    localStorage.removeItem(LS_PERMANENTLY_LOCKED_KEY);
+    try {
+      setLoginAttempts(0);
+      setIsTemporarilyLocked(false);
+      setIsPermanentlyLocked(false);
+      setLockoutTimeRemaining(0);
+      localStorage.removeItem(LS_LOGIN_ATTEMPTS_KEY);
+      localStorage.removeItem(LS_LOCKOUT_EXPIRY_KEY);
+      localStorage.removeItem(LS_PERMANENTLY_LOCKED_KEY);
+    } catch (e) {
+        console.error("[LoginForm] Error resetting login attempts in localStorage:", e);
+    }
   };
 
-  const onSubmit: SubmitHandler<LoginFormValues> = async (data) => {
+  const onSubmit: SubmitHandler<LoginFormValues> = async (data, event) => {
+    event?.preventDefault(); // Explicit prevent default, react-hook-form also does this.
+    console.log("[LoginForm] onSubmit entered.");
+    
     setIsFormLoading(true);
-    setLoginError(null);
+    setIsCredentialErrorDialogOpen(false);
 
     if (isPermanentlyLocked || isTemporarilyLocked) {
+      console.log('[LoginForm] onSubmit: Form submission blocked due to lockout.');
       setIsFormLoading(false);
       return;
     }
+    
+    try {
+      const loginResult = await login(data.username, data.password);
+      console.log('[LoginForm] onSubmit - loginResult received from AuthContext:', loginResult);
 
-    console.log(`[LoginForm] Attempting login for user: ${data.username}`);
-    const loginResult = await login(data.username, data.password);
-
-    if (!loginResult.success) {
-      if (loginResult.reason === 'blocked') {
-        setLoginError("Su cuenta ha sido bloqueada. Por favor, contacte a soporte");
-      } else { 
-        handleFailedLoginAttempt(data.username);
+      if (!loginResult.success) {
+        if (loginResult.reason === 'blocked') {
+          setCredentialErrorDialogMessage("Su cuenta ha sido bloqueada. Por favor, contacte a soporte.");
+          setIsCredentialErrorDialogOpen(true);
+        } else { 
+          console.log('[LoginForm] onSubmit - Calling handleFailedLoginAttempt due to invalid credentials or other non-blocked error.');
+          handleFailedLoginAttempt(data.username);
+        }
+      } else {
+        console.log(`[LoginForm] Login successful for ${data.username}. Redirection is handled by AuthContext.`);
+        resetLoginAttempts();
       }
-    } else {
-      console.log(`[LoginForm] Login successful for ${data.username}. Redirection is handled by AuthContext.`);
-      resetLoginAttempts();
+      console.log('[LoginForm] onSubmit: End of try block reached.');
+    } catch (error) {
+      console.error("[LoginForm] Error during onSubmit execution:", error);
+      setCredentialErrorDialogMessage("Ocurrió un error inesperado durante el inicio de sesión. Por favor, intente de nuevo.");
+      setIsCredentialErrorDialogOpen(true);
+    } finally {
+      console.log('[LoginForm] onSubmit finally block. Setting isFormLoading to false.');
+      setIsFormLoading(false);
     }
-    setIsFormLoading(false);
   };
 
   const adminInterestMessage = encodeURIComponent("¡Hola! Estoy interesado/a en ser organizador/administrador en RIFAZO.");
@@ -187,24 +238,7 @@ export default function LoginForm() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            {loginError && !isTemporarilyLocked && !isPermanentlyLocked && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Error de Autenticación</AlertTitle>
-                <AlertDescription>
-                  {loginError.includes("soporte") ? (
-                    <>
-                      Su cuenta ha sido bloqueada. Por favor, contacte a{" "}
-                      <a href={supportWhatsappUrl} target="_blank" rel="noopener noreferrer" className="text-black font-bold underline">
-                        soporte
-                      </a>.
-                    </>
-                  ) : (
-                    loginError
-                  )}
-                </AlertDescription>
-              </Alert>
-            )}
+            
             {isTemporarilyLocked && (
               <Alert variant="destructive">
                 <ShieldAlert className="h-4 w-4" />
@@ -231,6 +265,7 @@ export default function LoginForm() {
                 </AlertDescription>
               </Alert>
             )}
+
             <div>
               <Label htmlFor="username-login">Nombre de Usuario</Label>
               <Input id="username-login" {...register("username")} placeholder="usuario" disabled={disableForm} />
@@ -251,10 +286,10 @@ export default function LoginForm() {
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="absolute right-1 top-1/2 transform -translate-y-1/2 h-7 w-7 text-muted-foreground hover:bg-transparent hover:text-accent"
+                    className="absolute right-1 top-1/2 transform -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-accent hover:bg-transparent"
                     onClick={() => setShowPassword(!showPassword)}
                     disabled={disableForm}
-                    tabIndex={-1} 
+                    tabIndex={-1}
                   >
                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                     <span className="sr-only">{showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}</span>
@@ -321,7 +356,11 @@ export default function LoginForm() {
               </div>
             </div>
 
-            <Button type="submit" className="w-full" disabled={disableForm}>
+            <Button 
+              type="submit"
+              className="w-full" 
+              disabled={disableForm}
+            >
               {isFormLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {isFormLoading ? 'Ingresando...' : 'Ingresar'}
             </Button>
@@ -347,6 +386,35 @@ export default function LoginForm() {
         </CardFooter>
       </Card>
 
+      <Dialog open={isCredentialErrorDialogOpen} onOpenChange={setIsCredentialErrorDialogOpen}>
+        <DialogContent className="sm:max-w-xs">
+          <DialogHeader>
+            <DialogTitle className="flex items-center text-base">
+              <AlertCircle className="mr-2 h-5 w-5 text-destructive" />
+              Error de Inicio de Sesión
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-3 text-sm text-muted-foreground">
+            {credentialErrorDialogMessage.includes("Su cuenta ha sido bloqueada") ? (
+               <>
+                  Su cuenta ha sido bloqueada. Por favor, contacte a{" "}
+                  <a href={supportWhatsappUrl} target="_blank" rel="noopener noreferrer" className="text-destructive font-bold underline">
+                    soporte
+                  </a>.
+               </>
+            ) : (
+              credentialErrorDialogMessage
+            )}
+          </div>
+          <DialogFooter className="mt-1">
+            <DialogClose asChild>
+              <Button variant="outline" size="sm" className="text-xs">Cerrar</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+
       <Dialog open={isPrivacyPolicyOpen} onOpenChange={setIsPrivacyPolicyOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -356,7 +424,7 @@ export default function LoginForm() {
             <div className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground space-y-3 text-xs">
               <p><strong>Última actualización:</strong> [Junio 2025]</p>
               <p>En RIFAZO, nos comprometemos a proteger la privacidad y los datos personales de nuestros usuarios. Esta política explica qué información recopilamos, cómo la usamos y qué derechos tienes sobre tus datos.</p>
-              
+
               <h4>1. INFORMACIÓN QUE RECOPILAMOS</h4>
               <p>Al usar RIFAZO, podemos recopilar la siguiente información:</p>
               <ul className="list-disc list-inside space-y-1 pl-4">
@@ -400,7 +468,7 @@ export default function LoginForm() {
 
               <h4>8. CAMBIOS EN ESTA POLÍTICA</h4>
               <p>Nos reservamos el derecho a modificar esta política en cualquier momento. Cualquier cambio será notificado dentro de la app o en nuestros canales oficiales.</p>
-              
+
               <hr className="my-3"/>
               <p>Al registrarte y utilizar RIFAZO, aceptas estas Políticas de Privacidad.</p>
               <p><strong>Equipo de RIFAZO</strong></p>
@@ -421,7 +489,7 @@ export default function LoginForm() {
              <div className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground space-y-3 text-xs">
               <p><strong>Última actualización:</strong> [Junio 2025]</p>
               <p>Bienvenido a RIFAZO. Esta aplicación tiene como propósito facilitar la gestión de rifas creadas por terceros (denominados en adelante "Administradores"). Al registrarte y utilizar esta aplicación, aceptas los siguientes términos y condiciones:</p>
-              
+
               <h4>1. NATURALEZA DEL SERVICIO</h4>
               <p>RIFAZO es una plataforma digital que permite a los administradores organizar rifas y a los usuarios seleccionar números de participación. La app no gestiona ni procesa pagos, premios ni sorteos de manera directa.</p>
 

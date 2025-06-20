@@ -118,7 +118,10 @@ export default function RaffleDetailsPage() {
 
     const raffleUrl = window.location.href;
     const shareTitle = raffle.name;
-    const shareText = `¡Echa un vistazo a esta rifa: "${raffle.name}"! Premio: ${raffle.prize}. Participa aquí: ${raffleUrl}`;
+    const shareText = `🎉 ¡No te pierdas esta oportunidad única en RIFAZO!
+Participa en nuestra rifa y gana premios increíbles.
+¡Corre, que los boletos vuelan! 🚀
+👉 ${raffleUrl}`;
 
     if (navigator.share) {
       try {
@@ -336,5 +339,3 @@ export default function RaffleDetailsPage() {
     
 
     
-
-
