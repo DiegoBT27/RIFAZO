@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -19,7 +20,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { Loader2, UserPlus, Trash2, Users, AlertCircle, KeyRound, Edit3, UserCog, Info, Building, UserX, UserCheck, ShieldAlert } from 'lucide-react';
+import { Loader2, UserPlus, Trash2, Users, AlertCircle, KeyRound, Edit3, UserCog, Info, Building, UserX, UserCheck, ShieldAlert, Unlock } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
@@ -45,7 +46,7 @@ import {
 } from '@/components/ui/dialog';
 import type { ManagedUser } from '@/types';
 import { ScrollArea } from '../ui/scroll-area';
-import { getUsers, addUser, updateUser, deleteUser, getUserByUsername, addActivityLog } from '@/lib/firebase/firestoreService';
+import { getUsers, addUser, updateUser, deleteUser, getUserByUsername, addActivityLog, resetUserLockout } from '@/lib/firebase/firestoreService';
 import { cn } from '@/lib/utils';
 
 
@@ -200,6 +201,7 @@ export default function UserManagementClient() {
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
+  const [userToUnlock, setUserToUnlock] = useState<ManagedUser | null>(null);
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
 
@@ -601,6 +603,31 @@ export default function UserManagementClient() {
     }
   };
 
+  const handleUnlockConfirm = async () => {
+    if (!userToUnlock || !currentUser?.username) {
+        toast({ title: "Error", description: "No se pudo identificar el usuario a desbloquear.", variant: "destructive" });
+        setUserToUnlock(null);
+        return;
+    }
+    try {
+        await resetUserLockout(userToUnlock.id, currentUser.username);
+        toast({
+            title: "Cuenta Desbloqueada",
+            description: `La cuenta de ${userToUnlock.username} ha sido desbloqueada.`,
+        });
+        fetchUsersFromDB();
+    } catch (error: any) {
+        toast({
+            title: "Error",
+            description: `No se pudo desbloquear la cuenta: ${error.message}`,
+            variant: "destructive",
+        });
+    } finally {
+        setUserToUnlock(null);
+    }
+  };
+
+
   const handleOpenEditDialog = (userToEdit: ManagedUser) => {
     setEditingUser(userToEdit);
     resetEditForm({
@@ -759,18 +786,21 @@ export default function UserManagementClient() {
         <CardContent>
           {users.length > 0 ? (
             <div className="space-y-3">
-              {users.map((userEntry) => (
+              {users.map((userEntry) => {
+                const isLocked = !!(userEntry.lockoutUntil && new Date(userEntry.lockoutUntil) > new Date());
+                return (
                 <Card key={userEntry.id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-center bg-secondary/20">
                   <div className="mb-3 sm:mb-0 flex-grow">
                     <p className="font-semibold text-foreground flex items-center">
                       {userEntry.username}
-                      {userEntry.isBlocked && <UserX className="ml-2 h-4 w-4 text-destructive" title="Usuario Bloqueado"/>}
+                      {userEntry.isBlocked && <UserX className="ml-2 h-4 w-4 text-destructive" title="Usuario Bloqueado Permanentemente"/>}
                       {!userEntry.isBlocked && <UserCheck className="ml-2 h-4 w-4 text-green-600" title="Usuario Activo"/>}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Rol: <span className={userEntry.role === 'admin' ? 'font-bold text-primary' : (userEntry.role === 'founder' ? 'font-bold text-accent' : '')}>{userEntry.role}</span>
                       {userEntry.organizerType && ` - Tipo: ${userEntry.organizerType === 'individual' ? 'Individual' : 'Empresa'}`}
                        {userEntry.isBlocked && <Badge variant="destructive" className="ml-2 text-xs">Bloqueado</Badge>}
+                       {isLocked && <Badge variant="destructive" className="ml-2 text-xs animate-pulse">Bloqueo por Intentos</Badge>}
                     </p>
                     {(userEntry.organizerType === 'company' && userEntry.companyName) && <p className="text-xs text-muted-foreground">Empresa: {userEntry.companyName}</p>}
                     {(userEntry.organizerType === 'individual' && userEntry.fullName) && <p className="text-xs text-muted-foreground">Nombre: {userEntry.fullName}</p>}
@@ -789,6 +819,12 @@ export default function UserManagementClient() {
                         {userEntry.isBlocked ? "Desbloquear" : "Bloquear"}
                       </Label>
                     </div>
+                    {isLocked && (
+                        <Button variant="outline" size="icon" className="h-8 w-8 border-yellow-500 text-yellow-600 hover:bg-yellow-100" title="Desbloquear cuenta por intentos" onClick={() => setUserToUnlock(userEntry)}>
+                            <Unlock className="h-4 w-4" />
+                            <span className="sr-only">Desbloquear</span>
+                        </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="icon"
@@ -823,7 +859,7 @@ export default function UserManagementClient() {
                     </AlertDialog>
                   </div>
                 </Card>
-              ))}
+              )})}
             </div>
           ) : (
             <div className="text-center py-6 border-2 border-dashed border-muted-foreground/30 rounded-lg">
@@ -834,6 +870,25 @@ export default function UserManagementClient() {
           )}
         </CardContent>
       </Card>
+      
+      {userToUnlock && (
+        <AlertDialog open={!!userToUnlock} onOpenChange={(open) => !open && setUserToUnlock(null)}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle className="flex items-center"><Unlock className="mr-2 text-yellow-500" /> Confirmar Desbloqueo</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        ¿Estás seguro de que quieres desbloquear la cuenta de <span className="font-semibold">{userToUnlock.username}</span>? Esto eliminará el bloqueo temporal por intentos de inicio de sesión fallidos.
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel onClick={() => setUserToUnlock(null)} className="text-xs h-8">Cancelar</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleUnlockConfirm} className="bg-yellow-500 hover:bg-yellow-600 text-white text-xs h-8">
+                        Sí, Desbloquear
+                    </AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+      )}
 
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="sm:max-w-lg">

@@ -73,6 +73,8 @@ export const addUser = async (userData: Omit<ManagedUser, 'id'>): Promise<Manage
     planAssignedBy: null,
     rafflesCreatedThisPeriod: 0,
     rafflesEditedThisPeriod: 0,
+    failedLoginAttempts: 0,
+    lockoutUntil: null,
   };
 
   if (userData.role === 'admin' || userData.role === 'founder') {
@@ -88,7 +90,7 @@ export const addUser = async (userData: Omit<ManagedUser, 'id'>): Promise<Manage
       dataToSave.planAssignedBy = 'system_initial';
   }
 
-  const optionalFields: (keyof Omit<ManagedUser, 'id' | 'username' | 'password' | 'role' | 'isBlocked' | 'averageRating' | 'ratingCount' | 'plan' | 'planActive' | 'planStartDate' | 'planEndDate' | 'planAssignedBy' | 'rafflesCreatedThisPeriod' | 'rafflesEditedThisPeriod' | 'sessionId'>)[] = [
+  const optionalFields: (keyof Omit<ManagedUser, 'id' | 'username' | 'password' | 'role' | 'isBlocked' | 'averageRating' | 'ratingCount' | 'plan' | 'planActive' | 'planStartDate' | 'planEndDate' | 'planAssignedBy' | 'rafflesCreatedThisPeriod' | 'rafflesEditedThisPeriod' | 'sessionId' | 'failedLoginAttempts' | 'lockoutUntil'>)[] = [
     'organizerType', 'fullName', 'companyName', 'rif', 'publicAlias',
     'whatsappNumber', 'locationState', 'locationCity',
     'email', 'bio', 'adminPaymentMethodsInfo'
@@ -239,6 +241,24 @@ export const removeAdminPlan = async (adminUserId: string, removerUsername: stri
       adminUsername: adminData.username,
       removedPlan: oldPlanName
     }
+  });
+};
+
+export const resetUserLockout = async (userId: string, adminUsername: string): Promise<void> => {
+  const userDoc = doc(db, 'users', userId);
+  const userData = await getUserById(userId);
+  if (!userData) throw new Error("User not found");
+
+  await updateDoc(userDoc, {
+    failedLoginAttempts: 0,
+    lockoutUntil: null,
+  });
+
+  await addActivityLog({
+    adminUsername: adminUsername,
+    actionType: 'USER_ACCOUNT_UNLOCKED',
+    targetInfo: `Usuario: ${userData.username}`,
+    details: { userId: userId, username: userData.username }
   });
 };
 

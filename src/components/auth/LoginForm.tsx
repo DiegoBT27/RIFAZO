@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useRef, type FormEvent } from 'react';
+import { useState, type FormEvent, useEffect } from 'react';
 import Link from 'next/link';
 import { useForm, type SubmitHandler, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -12,13 +12,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { AlertCircle, Loader2, KeyRound, FileText, ShieldAlert, Eye, EyeOff } from 'lucide-react';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
   DialogClose,
 } from '@/components/ui/dialog';
@@ -38,13 +38,8 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 const ADMIN_WHATSAPP_NUMBER = "584141135956";
-const MAX_INITIAL_ATTEMPTS_BEFORE_TEMP_LOCK = 3;
-const MAX_TOTAL_ATTEMPTS_BEFORE_PERM_LOCK = 5;
-const LOCKOUT_DURATION_SECONDS = 10;
-
-const LS_LOGIN_ATTEMPTS_KEY = 'rifazo_loginAttempts';
-const LS_LOCKOUT_EXPIRY_KEY = 'rifazo_lockoutExpiry';
-const LS_PERMANENTLY_LOCKED_KEY = 'rifazo_permanentlyLocked';
+const MAX_LOCAL_ATTEMPTS = 3;
+const LOCAL_LOCKOUT_SECONDS = 10;
 
 export default function LoginForm() {
   const { login } = useAuth();
@@ -53,69 +48,85 @@ export default function LoginForm() {
   const [isTermsOpen, setIsTermsOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  const [dialogContent, setDialogContent] = useState<{ title: string; description: React.ReactNode } | null>(null);
+
   const [loginAttempts, setLoginAttempts] = useState(0);
-  const [isTemporarilyLocked, setIsTemporarilyLocked] = useState(false);
-  const [isPermanentlyLocked, setIsPermanentlyLocked] = useState(false);
-  const [lockoutTimeRemaining, setLockoutTimeRemaining] = useState(0);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const [lockoutExpiry, setLockoutExpiry] = useState<number | null>(null);
+  const [countdown, setCountdown] = useState(0);
 
-  const [isCredentialErrorDialogOpen, setIsCredentialErrorDialogOpen] = useState(false);
-  const [credentialErrorDialogMessage, setCredentialErrorDialogMessage] = useState("Nombre de usuario o contraseña incorrectos.");
-
+  const isTemporarilyLocked = lockoutExpiry !== null && lockoutExpiry > Date.now();
 
   useEffect(() => {
-    try {
-      const storedAttempts = parseInt(localStorage.getItem(LS_LOGIN_ATTEMPTS_KEY) || '0', 10);
-      const storedLockoutExpiry = parseInt(localStorage.getItem(LS_LOCKOUT_EXPIRY_KEY) || '0', 10);
-      const storedPermanentlyLocked = localStorage.getItem(LS_PERMANENTLY_LOCKED_KEY) === 'true';
-
-      setLoginAttempts(storedAttempts);
-      setIsPermanentlyLocked(storedPermanentlyLocked);
-
-      if (storedPermanentlyLocked) {
-        return;
-      }
-
-      if (storedLockoutExpiry > Date.now()) {
-        setIsTemporarilyLocked(true);
-        const remainingTime = Math.ceil((storedLockoutExpiry - Date.now()) / 1000);
-        setLockoutTimeRemaining(remainingTime);
-      } else {
-        if (localStorage.getItem(LS_LOCKOUT_EXPIRY_KEY)) {
-          localStorage.removeItem(LS_LOCKOUT_EXPIRY_KEY);
+    let interval: NodeJS.Timeout;
+    if (isTemporarilyLocked && lockoutExpiry) {
+      interval = setInterval(() => {
+        const secondsLeft = Math.ceil((lockoutExpiry - Date.now()) / 1000);
+        setCountdown(secondsLeft > 0 ? secondsLeft : 0);
+        if (secondsLeft <= 0) {
+          setLockoutExpiry(null);
+          setLoginAttempts(0);
         }
-        setIsTemporarilyLocked(false);
-      }
-    } catch (e) {
-        console.error("[LoginForm] Error in initial useEffect (localStorage access):", e);
-    }
-  }, []);
-
-
-  useEffect(() => {
-    if (isTemporarilyLocked && lockoutTimeRemaining > 0) {
-      timerRef.current = setInterval(() => {
-        setLockoutTimeRemaining((prevTime) => {
-          if (prevTime <= 1) {
-            if(timerRef.current) clearInterval(timerRef.current!);
-            setIsTemporarilyLocked(false);
-            try {
-                localStorage.removeItem(LS_LOCKOUT_EXPIRY_KEY);
-            } catch (e) {
-                console.error("[LoginForm] Error removing lockout expiry from localStorage:", e);
-            }
-            return 0;
-          }
-          return prevTime - 1;
-        });
       }, 1000);
     }
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
-  }, [isTemporarilyLocked, lockoutTimeRemaining]);
+    return () => clearInterval(interval);
+  }, [isTemporarilyLocked, lockoutExpiry]);
+
+  const handleFailedLoginAttempt = (reason?: 'blocked' | 'credentials_invalid' | 'account_locked' | 'user_not_found', lockoutMinutes?: number) => {
+    switch (reason) {
+      case 'blocked':
+        setDialogContent({
+          title: 'Cuenta Bloqueada',
+          description: (
+            <>
+              Su cuenta ha sido bloqueada permanentemente por un administrador.
+              {' '}
+              <a href={`https://wa.me/${ADMIN_WHATSAPP_NUMBER}?text=${encodeURIComponent('Hola, necesito ayuda para desbloquear mi cuenta RIFAZO.')}`} target="_blank" rel="noopener noreferrer" className="font-bold underline text-primary">
+                Contactar a soporte aquí.
+              </a>
+            </>
+          ),
+        });
+        break;
+      case 'account_locked':
+        setDialogContent({
+          title: 'Cuenta Bloqueada Temporalmente',
+          description: `Su cuenta ha sido bloqueada por ${lockoutMinutes} minutos debido a demasiados intentos fallidos.`,
+        });
+        break;
+      case 'user_not_found':
+        setDialogContent({
+          title: 'Usuario No Encontrado',
+          description: 'El nombre de usuario introducido no se encuentra registrado en nuestro sistema. Por favor, verifica tus datos o regístrate.',
+        });
+        break;
+      case 'credentials_invalid':
+        setLoginAttempts(prev => {
+          const newAttempts = prev + 1;
+          if (newAttempts >= MAX_LOCAL_ATTEMPTS) {
+            const newExpiry = Date.now() + LOCAL_LOCKOUT_SECONDS * 1000;
+            setLockoutExpiry(newExpiry);
+            setCountdown(LOCAL_LOCKOUT_SECONDS);
+            setDialogContent({
+                title: 'Demasiados Intentos Fallidos',
+                description: `Por favor, espera ${LOCAL_LOCKOUT_SECONDS} segundos antes de volver a intentarlo.`
+            });
+          } else {
+            setDialogContent({
+                title: 'Credenciales Incorrectas',
+                description: `Contraseña incorrecta. Te quedan ${MAX_LOCAL_ATTEMPTS - newAttempts} intento(s) antes de un bloqueo temporal.`
+            });
+          }
+          return newAttempts;
+        });
+        break;
+      default:
+         setDialogContent({
+            title: 'Error Inesperado',
+            description: 'Ha ocurrido un error. Por favor, intenta de nuevo más tarde.'
+         });
+    }
+  };
+
 
   const { register, handleSubmit, control, formState: { errors } } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -127,108 +138,32 @@ export default function LoginForm() {
     }
   });
 
-  const handleFailedLoginAttempt = (username: string) => {
-    try {
-      console.log(`[LoginForm] handleFailedLoginAttempt ENTRY. Current loginAttempts state: ${loginAttempts}, isTemporarilyLocked: ${isTemporarilyLocked}, isPermanentlyLocked: ${isPermanentlyLocked}`);
-
-      if (isPermanentlyLocked || isTemporarilyLocked) {
-        console.log('[LoginForm] handleFailedLoginAttempt: Already locked, no further action on error message for this attempt.');
-        return;
-      }
-
-      const newAttempts = loginAttempts + 1;
-      setLoginAttempts(newAttempts); 
-      localStorage.setItem(LS_LOGIN_ATTEMPTS_KEY, newAttempts.toString());
-      console.log(`[LoginForm] handleFailedLoginAttempt MID. newAttempts calculated: ${newAttempts}. MAX_INITIAL_ATTEMPTS: ${MAX_INITIAL_ATTEMPTS_BEFORE_TEMP_LOCK}, MAX_TOTAL_ATTEMPTS: ${MAX_TOTAL_ATTEMPTS_BEFORE_PERM_LOCK}`);
-
-
-      if (newAttempts >= MAX_TOTAL_ATTEMPTS_BEFORE_PERM_LOCK) {
-        setIsPermanentlyLocked(true);
-        setIsTemporarilyLocked(false);
-        setLockoutTimeRemaining(0);
-        localStorage.setItem(LS_PERMANENTLY_LOCKED_KEY, 'true');
-        localStorage.removeItem(LS_LOCKOUT_EXPIRY_KEY);
-        console.warn(`[LoginForm] User ${username} permanently locked. Attempts: ${newAttempts}`);
-      } else if (newAttempts >= MAX_INITIAL_ATTEMPTS_BEFORE_TEMP_LOCK) {
-        const newLockoutExpiry = Date.now() + LOCKOUT_DURATION_SECONDS * 1000;
-        setIsTemporarilyLocked(true);
-        setLockoutTimeRemaining(LOCKOUT_DURATION_SECONDS);
-        localStorage.setItem(LS_LOCKOUT_EXPIRY_KEY, newLockoutExpiry.toString());
-        console.warn(`[LoginForm] User ${username} temporarily locked for ${LOCKOUT_DURATION_SECONDS}s. Attempts: ${newAttempts}`);
-      } else {
-        console.log('[LoginForm] handleFailedLoginAttempt: Path for credentials_invalid. Setting dialog open.');
-        setCredentialErrorDialogMessage("Nombre de usuario o contraseña incorrectos.");
-        setIsCredentialErrorDialogOpen(true);
-      }
-    } catch (e: any) {
-      console.error("[LoginForm] Error inside handleFailedLoginAttempt:", e);
-      setCredentialErrorDialogMessage("Ocurrió un error al procesar el intento de inicio de sesión.");
-      setIsCredentialErrorDialogOpen(true);
-    }
-  };
-
-
-  const resetLoginAttempts = () => {
-    try {
-      setLoginAttempts(0);
-      setIsTemporarilyLocked(false);
-      setIsPermanentlyLocked(false);
-      setLockoutTimeRemaining(0);
-      localStorage.removeItem(LS_LOGIN_ATTEMPTS_KEY);
-      localStorage.removeItem(LS_LOCKOUT_EXPIRY_KEY);
-      localStorage.removeItem(LS_PERMANENTLY_LOCKED_KEY);
-    } catch (e) {
-        console.error("[LoginForm] Error resetting login attempts in localStorage:", e);
-    }
-  };
-
-  const onSubmit: SubmitHandler<LoginFormValues> = async (data, event) => {
-    event?.preventDefault(); // Explicit prevent default, react-hook-form also does this.
-    console.log("[LoginForm] onSubmit entered.");
-    
+  const onSubmit: SubmitHandler<LoginFormValues> = async (data) => {
     setIsFormLoading(true);
-    setIsCredentialErrorDialogOpen(false);
 
-    if (isPermanentlyLocked || isTemporarilyLocked) {
-      console.log('[LoginForm] onSubmit: Form submission blocked due to lockout.');
-      setIsFormLoading(false);
-      return;
-    }
-    
     try {
       const loginResult = await login(data.username, data.password);
-      console.log('[LoginForm] onSubmit - loginResult received from AuthContext:', loginResult);
-
+      
       if (!loginResult.success) {
-        if (loginResult.reason === 'blocked') {
-          setCredentialErrorDialogMessage("Su cuenta ha sido bloqueada. Por favor, contacte a soporte.");
-          setIsCredentialErrorDialogOpen(true);
-        } else { 
-          console.log('[LoginForm] onSubmit - Calling handleFailedLoginAttempt due to invalid credentials or other non-blocked error.');
-          handleFailedLoginAttempt(data.username);
-        }
+        handleFailedLoginAttempt(loginResult.reason, loginResult.lockoutMinutes);
       } else {
-        console.log(`[LoginForm] Login successful for ${data.username}. Redirection is handled by AuthContext.`);
-        resetLoginAttempts();
+        setLoginAttempts(0);
+        setLockoutExpiry(null);
       }
-      console.log('[LoginForm] onSubmit: End of try block reached.');
     } catch (error) {
       console.error("[LoginForm] Error during onSubmit execution:", error);
-      setCredentialErrorDialogMessage("Ocurrió un error inesperado durante el inicio de sesión. Por favor, intente de nuevo.");
-      setIsCredentialErrorDialogOpen(true);
+      setDialogContent({
+        title: 'Error de Conexión',
+        description: 'No se pudo comunicar con el servidor. Revisa tu conexión e intenta de nuevo.'
+      });
     } finally {
-      console.log('[LoginForm] onSubmit finally block. Setting isFormLoading to false.');
       setIsFormLoading(false);
     }
   };
-
+  
   const adminInterestMessage = encodeURIComponent("¡Hola! Estoy interesado/a en ser organizador/administrador en RIFAZO.");
   const whatsappAdminUrl = `https://wa.me/${ADMIN_WHATSAPP_NUMBER}?text=${adminInterestMessage}`;
-  const supportContactMessage = encodeURIComponent("¡Hola! Necesito ayuda con mi cuenta RIFAZO, he sido bloqueado/a tras varios intentos de inicio de sesión.");
-  const supportWhatsappUrl = `https://wa.me/${ADMIN_WHATSAPP_NUMBER}?text=${supportContactMessage}`;
-
-  const disableForm = isFormLoading || isTemporarilyLocked || isPermanentlyLocked;
-
+  
   return (
     <>
       <Card className="w-full max-w-md mx-auto shadow-xl">
@@ -238,37 +173,9 @@ export default function LoginForm() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            
-            {isTemporarilyLocked && (
-              <Alert variant="destructive">
-                <ShieldAlert className="h-4 w-4" />
-                <AlertTitle>Demasiados Intentos Fallidos</AlertTitle>
-                <AlertDescription>
-                  Has alcanzado un límite de intentos. Espera {lockoutTimeRemaining} segundos.
-                  Si el problema persiste,{' '}
-                  <a href={supportWhatsappUrl} target="_blank" rel="noopener noreferrer" className="text-black font-bold underline">
-                    contacta a soporte
-                  </a>.
-                </AlertDescription>
-              </Alert>
-            )}
-            {isPermanentlyLocked && (
-              <Alert variant="destructive">
-                 <ShieldAlert className="h-4 w-4" />
-                <AlertTitle>Cuenta Bloqueada</AlertTitle>
-                <AlertDescription>
-                  Has superado el límite de intentos de inicio de sesión. Por favor,{' '}
-                  <a href={supportWhatsappUrl} target="_blank" rel="noopener noreferrer" className="text-black font-bold underline">
-                    contacta a soporte
-                  </a>
-                  {' '}para desbloquear tu cuenta.
-                </AlertDescription>
-              </Alert>
-            )}
-
             <div>
               <Label htmlFor="username-login">Nombre de Usuario</Label>
-              <Input id="username-login" {...register("username")} placeholder="usuario" disabled={disableForm} />
+              <Input id="username-login" {...register("username")} placeholder="usuario" disabled={isFormLoading || isTemporarilyLocked} />
               {errors.username && <p className="text-xs text-destructive mt-1">{errors.username.message}</p>}
             </div>
             <div>
@@ -279,7 +186,7 @@ export default function LoginForm() {
                     type={showPassword ? "text" : "password"}
                     {...register("password")}
                     placeholder="tu contraseña"
-                    disabled={disableForm}
+                    disabled={isFormLoading || isTemporarilyLocked}
                     className="pr-10"
                   />
                   <Button
@@ -288,7 +195,7 @@ export default function LoginForm() {
                     size="icon"
                     className="absolute right-1 top-1/2 transform -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-accent hover:bg-transparent"
                     onClick={() => setShowPassword(!showPassword)}
-                    disabled={disableForm}
+                    disabled={isFormLoading || isTemporarilyLocked}
                     tabIndex={-1}
                   >
                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
@@ -309,7 +216,7 @@ export default function LoginForm() {
                         id="privacyPolicyAccepted-login"
                         checked={field.value}
                         onCheckedChange={field.onChange}
-                        disabled={disableForm}
+                        disabled={isFormLoading || isTemporarilyLocked}
                         className="h-3 w-3 mt-[2px] [&_svg]:h-2.5 [&_svg]:w-2.5"
                       />
                     )}
@@ -317,7 +224,7 @@ export default function LoginForm() {
                   <div className="grid gap-0.5 leading-none">
                     <Label htmlFor="privacyPolicyAccepted-login" className="text-xs font-normal cursor-pointer">
                       Acepto las{' '}
-                      <Button variant="link" type="button" className="p-0 h-auto text-xs text-primary hover:underline" onClick={() => setIsPrivacyPolicyOpen(true)} disabled={disableForm}>
+                      <Button variant="link" type="button" className="p-0 h-auto text-xs text-primary hover:underline" onClick={() => setIsPrivacyPolicyOpen(true)} disabled={isFormLoading || isTemporarilyLocked}>
                         Políticas de Privacidad
                       </Button>
                       .
@@ -337,7 +244,7 @@ export default function LoginForm() {
                         id="termsAndConditionsAccepted-login"
                         checked={field.value}
                         onCheckedChange={field.onChange}
-                        disabled={disableForm}
+                        disabled={isFormLoading || isTemporarilyLocked}
                         className="h-3 w-3 mt-[2px] [&_svg]:h-2.5 [&_svg]:w-2.5"
                       />
                     )}
@@ -345,7 +252,7 @@ export default function LoginForm() {
                   <div className="grid gap-0.5 leading-none">
                   <Label htmlFor="termsAndConditionsAccepted-login" className="text-xs font-normal cursor-pointer">
                     Acepto los{' '}
-                    <Button variant="link" type="button" className="p-0 h-auto text-xs text-primary hover:underline" onClick={() => setIsTermsOpen(true)} disabled={disableForm}>
+                    <Button variant="link" type="button" className="p-0 h-auto text-xs text-primary hover:underline" onClick={() => setIsTermsOpen(true)} disabled={isFormLoading || isTemporarilyLocked}>
                       Términos y Condiciones
                     </Button>
                     .
@@ -359,10 +266,10 @@ export default function LoginForm() {
             <Button 
               type="submit"
               className="w-full" 
-              disabled={disableForm}
+              disabled={isFormLoading || isTemporarilyLocked}
             >
               {isFormLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              {isFormLoading ? 'Ingresando...' : 'Ingresar'}
+              {isTemporarilyLocked ? `Intenta de nuevo en ${countdown}s` : (isFormLoading ? 'Ingresando...' : 'Ingresar')}
             </Button>
           </form>
         </CardContent>
@@ -386,25 +293,16 @@ export default function LoginForm() {
         </CardFooter>
       </Card>
 
-      <Dialog open={isCredentialErrorDialogOpen} onOpenChange={setIsCredentialErrorDialogOpen}>
-        <DialogContent className="sm:max-w-xs">
+      <Dialog open={!!dialogContent} onOpenChange={(open) => { if (!open) setDialogContent(null); }}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center text-base">
-              <AlertCircle className="mr-2 h-5 w-5 text-destructive" />
-              Error de Inicio de Sesión
+              <ShieldAlert className="mr-2 h-5 w-5 text-destructive" />
+              {dialogContent?.title}
             </DialogTitle>
           </DialogHeader>
           <div className="py-3 text-sm text-muted-foreground">
-            {credentialErrorDialogMessage.includes("Su cuenta ha sido bloqueada") ? (
-               <>
-                  Su cuenta ha sido bloqueada. Por favor, contacte a{" "}
-                  <a href={supportWhatsappUrl} target="_blank" rel="noopener noreferrer" className="text-destructive font-bold underline">
-                    soporte
-                  </a>.
-               </>
-            ) : (
-              credentialErrorDialogMessage
-            )}
+            {dialogContent?.description}
           </div>
           <DialogFooter className="mt-1">
             <DialogClose asChild>
@@ -413,7 +311,6 @@ export default function LoginForm() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
 
       <Dialog open={isPrivacyPolicyOpen} onOpenChange={setIsPrivacyPolicyOpen}>
         <DialogContent className="sm:max-w-lg">

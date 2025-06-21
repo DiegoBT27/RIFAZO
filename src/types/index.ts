@@ -66,6 +66,8 @@ export interface ManagedUser {
   password?: string;
   isBlocked?: boolean; 
   sessionId?: string | null;
+  failedLoginAttempts?: number;
+  lockoutUntil?: string | null;
   
   organizerType?: 'individual' | 'company';
   publicAlias?: string;
@@ -106,7 +108,8 @@ export type ActivityLogActionType =
   | 'ADMIN_PLAN_EXPIRED'
   | 'ADMIN_PLAN_REMOVED' 
   | 'ADMIN_PLAN_SCHEDULED' 
-  | 'ADMIN_PLAN_ACTIVATED_SCHEDULED';
+  | 'ADMIN_PLAN_ACTIVATED_SCHEDULED'
+  | 'USER_ACCOUNT_UNLOCKED';
 
 
 export interface ActivityLog {
@@ -128,5 +131,3 @@ export interface Rating {
   comment?: string; // Optional comment
   createdAt: any; // Firestore ServerTimestamp
 }
-
-    

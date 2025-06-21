@@ -3,7 +3,8 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ManagedUser } from '@/types';
 import { initialPlatformUsers } from '@/lib/mock-data';
@@ -13,10 +14,13 @@ import { differenceInDays } from 'date-fns';
 import { db } from '@/lib/firebase/config';
 import { doc, onSnapshot } from 'firebase/firestore';
 
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_MINUTES = 15;
 
 interface LoginResult {
   success: boolean;
-  reason?: 'blocked' | 'credentials_invalid' | 'plan_expired';
+  reason?: 'blocked' | 'credentials_invalid' | 'account_locked' | 'user_not_found';
+  lockoutMinutes?: number;
 }
 
 interface AuthContextType {
@@ -216,6 +220,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 rafflesEditedThisPeriod: userData.rafflesEditedThisPeriod || 0, // Added
                 averageRating: userData.averageRating || 0,
                 ratingCount: userData.ratingCount || 0,
+                failedLoginAttempts: 0,
+                lockoutUntil: null,
               };
               await addUser(fullInitialUser); 
             } else {
@@ -276,58 +282,76 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []); 
 
   const login = async (usernameInput: string, passwordInput: string): Promise<LoginResult> => {
-    console.log(`[AuthContext] Attempting login for user: ${usernameInput}`);
-    setIsLoading(true);
+    // setIsLoading(true); // This was the problem - removed
     try {
-      let dbUser = await getUserByUsername(usernameInput);
-      console.log(`[AuthContext] User data from Firestore for login attempt of '${usernameInput}':`, dbUser);
+      const dbUser = await getUserByUsername(usernameInput);
 
-      if (dbUser && dbUser.password === passwordInput) {
-        if (dbUser.isBlocked === true) {
+      if (!dbUser) {
+        console.warn(`[AuthContext] Login attempt for non-existent user: ${usernameInput}.`);
+        return { success: false, reason: 'user_not_found' };
+      }
+
+      if (dbUser.lockoutUntil && new Date(dbUser.lockoutUntil) > new Date()) {
+        const lockedUntilDate = new Date(dbUser.lockoutUntil);
+        const minutesRemaining = Math.ceil((lockedUntilDate.getTime() - new Date().getTime()) / 60000);
+        console.warn(`[AuthContext] Login attempt for locked account: ${usernameInput}. Locked for ${minutesRemaining} more minutes.`);
+        return { success: false, reason: 'account_locked', lockoutMinutes: minutesRemaining };
+      }
+
+      if (dbUser.password === passwordInput) {
+        if (dbUser.isBlocked) {
           console.warn(`[AuthContext] Login attempt for blocked user: ${usernameInput}.`);
           return { success: false, reason: 'blocked' };
         }
-        
-        const newSessionId = crypto.randomUUID();
-        console.log(`[AuthContext] Generated new session ID for ${usernameInput}: ${newSessionId}`);
-        
-        dbUser.sessionId = newSessionId;
-        await updateUser(dbUser.id, { sessionId: newSessionId });
-        
-        dbUser = await checkAndManagePlanStatus(dbUser);
-        
-        if (dbUser.plan && !dbUser.planActive && (dbUser.planEndDate && new Date(dbUser.planEndDate) < new Date()) && !(dbUser.planStartDate && new Date(dbUser.planStartDate) > new Date())) {
-           console.warn(`[AuthContext] Plan for user '${usernameInput}' has expired. Login allowed but features may be restricted.`);
+
+        if (dbUser.failedLoginAttempts > 0 || dbUser.lockoutUntil) {
+          await updateUser(dbUser.id, { failedLoginAttempts: 0, lockoutUntil: null });
         }
 
-        localStorage.setItem('currentUser', JSON.stringify(dbUser));
-        setUser(dbUser);
-        setIsLoggedIn(true);
-        console.log(`[AuthContext] Login successful for ${usernameInput}. Role: ${dbUser.role}, Plan Active: ${dbUser.planActive}. Redirecting...`);
+        const newSessionId = crypto.randomUUID();
+        await updateUser(dbUser.id, { sessionId: newSessionId });
         
+        let finalUser = await checkAndManagePlanStatus({ ...dbUser, sessionId: newSessionId });
+
+        localStorage.setItem('currentUser', JSON.stringify(finalUser));
+        setUser(finalUser);
+        setIsLoggedIn(true);
+
         await addActivityLog({
-          adminUsername: dbUser.username,
+          adminUsername: finalUser.username,
           actionType: 'ADMIN_LOGIN',
-          targetInfo: `Usuario: ${dbUser.username}`,
+          targetInfo: `Usuario: ${finalUser.username}`,
           details: { ipAddress: 'N/A', userAgent: 'N/A' }
         });
 
-        if (dbUser.role === 'admin' || dbUser.role === 'founder') {
+        if (finalUser.role === 'admin' || finalUser.role === 'founder') {
           router.push('/admin');
         } else {
           router.push('/');
         }
         return { success: true };
       } else {
-         console.warn(`[AuthContext] Login failed for ${usernameInput}. User not found or password incorrect.`);
-         return { success: false, reason: 'credentials_invalid' };
+        const newAttemptCount = (dbUser.failedLoginAttempts || 0) + 1;
+
+        if (newAttemptCount >= MAX_FAILED_ATTEMPTS) {
+          const lockoutUntilDate = new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000);
+          await updateUser(dbUser.id, {
+            failedLoginAttempts: 0,
+            lockoutUntil: lockoutUntilDate.toISOString()
+          });
+          console.warn(`[AuthContext] User ${usernameInput} locked for ${LOCKOUT_MINUTES} minutes.`);
+          return { success: false, reason: 'account_locked', lockoutMinutes: LOCKOUT_MINUTES };
+        } else {
+          await updateUser(dbUser.id, { failedLoginAttempts: newAttemptCount });
+          return { success: false, reason: 'credentials_invalid' };
+        }
       }
     } catch (error) {
       console.error("[AuthContext] Error during login:", error);
       return { success: false, reason: 'credentials_invalid' };
-    } finally {
+    } /* finally { // This was the problem
       setIsLoading(false);
-    }
+    } */
   };
 
   useEffect(() => {

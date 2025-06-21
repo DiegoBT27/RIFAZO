@@ -13,7 +13,9 @@ const fundadorProfileBase = {
   bio: 'El creador y fundador de la plataforma RIFAZO. Comprometido con rifas justas y emocionantes.',
   adminPaymentMethodsInfo: 'Acepto todos los métodos de pago principales. ¡Contacta para más detalles!',
   rafflesCreatedThisPeriod: 0,
-  rafflesEditedThisPeriod: 0, // Added
+  rafflesEditedThisPeriod: 0,
+  failedLoginAttempts: 0,
+  lockoutUntil: null,
 };
 
 // Initial platform users to seed Firestore if empty
