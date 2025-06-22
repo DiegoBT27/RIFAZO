@@ -132,7 +132,7 @@ export default function BackupRestorePage() {
       toast({ title: 'Error de Restauración', description: 'Por favor, selecciona un archivo de respaldo.', variant: 'destructive' });
       return;
     }
-    // Ensure only founder can restore
+    
     if (user?.role !== 'founder') {
       toast({ title: 'Error de Permiso', description: 'Solo los fundadores pueden restaurar datos.', variant: 'destructive' });
       return;
@@ -140,7 +140,7 @@ export default function BackupRestorePage() {
 
     setIsRestoreConfirmOpen(false); 
     setIsRestoring(true);
-    toast({ title: 'Iniciando Restauración', description: 'Importando datos desde el archivo. Esto puede tardar...' });
+    toast({ title: 'Iniciando Restauración', description: 'Validando y procesando archivo. Esto puede tardar...' });
 
     try {
       const fileReader = new FileReader();
@@ -152,24 +152,13 @@ export default function BackupRestorePage() {
           }
           const dataToImport = JSON.parse(result);
           
-          let isValidStructure = true;
-          // For founder, check against FOUNDER_COLLECTIONS_TO_BACKUP
-          for (const col of FOUNDER_COLLECTIONS_TO_BACKUP) {
-            if (!dataToImport[col] || !Array.isArray(dataToImport[col])) {
-               // Allow missing 'users' if it was an admin backup, though admin shouldn't be able to restore
-               if (col === 'users' && !Object.keys(dataToImport).includes('users')) {
-                 console.warn("Archivo de respaldo no contiene la colección 'users'. Si es un respaldo de admin, esto es esperado pero la restauración completa fallará si se intenta con este archivo.");
-                 // This path should ideally not be taken by an admin due to role checks.
-               } else {
-                isValidStructure = false;
-                break;
-               }
-            }
+          // CRITICAL VALIDATION: Ensure the backup file has the correct structure for a founder restore.
+          const missingCollections = FOUNDER_COLLECTIONS_TO_BACKUP.filter(col => !dataToImport[col]);
+          if (missingCollections.length > 0) {
+            const errorMsg = `El archivo de respaldo es inválido o incompleto para una restauración de fundador. Faltan las siguientes colecciones: ${missingCollections.join(', ')}. Es posible que sea un respaldo de administrador.`;
+            throw new Error(errorMsg);
           }
-          if (!isValidStructure) {
-            throw new Error('El archivo de respaldo no tiene la estructura esperada para una restauración completa de fundador.');
-          }
-
+          
           const importResult = await importFirestoreCollections(dataToImport, FOUNDER_COLLECTIONS_TO_BACKUP);
           
           setRestoreSummary(importResult.summary);
@@ -188,7 +177,7 @@ export default function BackupRestorePage() {
         } catch (parseError: any) {
           console.error('Error parsing or processing restore file:', parseError);
           setRestoreErrors([`Error al procesar el archivo de respaldo: ${parseError.message}`]);
-          toast({ title: 'Error de Restauración', description: `El archivo de respaldo es inválido o está corrupto: ${parseError.message}`, variant: 'destructive' });
+          toast({ title: 'Error de Restauración', description: `El archivo de respaldo es inválido o está corrupto: ${parseError.message}`, variant: 'destructive', duration: 10000 });
         } finally {
           setIsRestoring(false);
           setSelectedFile(null); 

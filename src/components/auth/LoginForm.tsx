@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { AlertCircle, Loader2, KeyRound, FileText, ShieldAlert, Eye, EyeOff } from 'lucide-react';
+import { AlertCircle, Loader2, FileText, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
@@ -38,8 +38,6 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 const ADMIN_WHATSAPP_NUMBER = "584141135956";
-const MAX_LOCAL_ATTEMPTS = 3;
-const LOCAL_LOCKOUT_SECONDS = 10;
 
 export default function LoginForm() {
   const { login } = useAuth();
@@ -49,27 +47,6 @@ export default function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
 
   const [dialogContent, setDialogContent] = useState<{ title: string; description: React.ReactNode } | null>(null);
-
-  const [loginAttempts, setLoginAttempts] = useState(0);
-  const [lockoutExpiry, setLockoutExpiry] = useState<number | null>(null);
-  const [countdown, setCountdown] = useState(0);
-
-  const isTemporarilyLocked = lockoutExpiry !== null && lockoutExpiry > Date.now();
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isTemporarilyLocked && lockoutExpiry) {
-      interval = setInterval(() => {
-        const secondsLeft = Math.ceil((lockoutExpiry - Date.now()) / 1000);
-        setCountdown(secondsLeft > 0 ? secondsLeft : 0);
-        if (secondsLeft <= 0) {
-          setLockoutExpiry(null);
-          setLoginAttempts(0);
-        }
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [isTemporarilyLocked, lockoutExpiry]);
 
   const handleFailedLoginAttempt = (reason?: 'blocked' | 'credentials_invalid' | 'account_locked' | 'user_not_found', lockoutMinutes?: number) => {
     switch (reason) {
@@ -100,23 +77,9 @@ export default function LoginForm() {
         });
         break;
       case 'credentials_invalid':
-        setLoginAttempts(prev => {
-          const newAttempts = prev + 1;
-          if (newAttempts >= MAX_LOCAL_ATTEMPTS) {
-            const newExpiry = Date.now() + LOCAL_LOCKOUT_SECONDS * 1000;
-            setLockoutExpiry(newExpiry);
-            setCountdown(LOCAL_LOCKOUT_SECONDS);
-            setDialogContent({
-                title: 'Demasiados Intentos Fallidos',
-                description: `Por favor, espera ${LOCAL_LOCKOUT_SECONDS} segundos antes de volver a intentarlo.`
-            });
-          } else {
-            setDialogContent({
-                title: 'Credenciales Incorrectas',
-                description: `Contraseña incorrecta. Te quedan ${MAX_LOCAL_ATTEMPTS - newAttempts} intento(s) antes de un bloqueo temporal.`
-            });
-          }
-          return newAttempts;
+        setDialogContent({
+            title: 'Credenciales Incorrectas',
+            description: `El nombre de usuario o la contraseña son incorrectos. Por favor, intenta de nuevo.`
         });
         break;
       default:
@@ -140,15 +103,13 @@ export default function LoginForm() {
 
   const onSubmit: SubmitHandler<LoginFormValues> = async (data) => {
     setIsFormLoading(true);
+    setDialogContent(null);
 
     try {
       const loginResult = await login(data.username, data.password);
       
       if (!loginResult.success) {
         handleFailedLoginAttempt(loginResult.reason, loginResult.lockoutMinutes);
-      } else {
-        setLoginAttempts(0);
-        setLockoutExpiry(null);
       }
     } catch (error) {
       console.error("[LoginForm] Error during onSubmit execution:", error);
@@ -175,7 +136,7 @@ export default function LoginForm() {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             <div>
               <Label htmlFor="username-login">Nombre de Usuario</Label>
-              <Input id="username-login" {...register("username")} placeholder="usuario" disabled={isFormLoading || isTemporarilyLocked} />
+              <Input id="username-login" {...register("username")} placeholder="usuario" disabled={isFormLoading} />
               {errors.username && <p className="text-xs text-destructive mt-1">{errors.username.message}</p>}
             </div>
             <div>
@@ -186,7 +147,7 @@ export default function LoginForm() {
                     type={showPassword ? "text" : "password"}
                     {...register("password")}
                     placeholder="tu contraseña"
-                    disabled={isFormLoading || isTemporarilyLocked}
+                    disabled={isFormLoading}
                     className="pr-10"
                   />
                   <Button
@@ -195,7 +156,7 @@ export default function LoginForm() {
                     size="icon"
                     className="absolute right-1 top-1/2 transform -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-accent hover:bg-transparent"
                     onClick={() => setShowPassword(!showPassword)}
-                    disabled={isFormLoading || isTemporarilyLocked}
+                    disabled={isFormLoading}
                     tabIndex={-1}
                   >
                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
@@ -216,7 +177,7 @@ export default function LoginForm() {
                         id="privacyPolicyAccepted-login"
                         checked={field.value}
                         onCheckedChange={field.onChange}
-                        disabled={isFormLoading || isTemporarilyLocked}
+                        disabled={isFormLoading}
                         className="h-3 w-3 mt-[2px] [&_svg]:h-2.5 [&_svg]:w-2.5"
                       />
                     )}
@@ -224,7 +185,7 @@ export default function LoginForm() {
                   <div className="grid gap-0.5 leading-none">
                     <Label htmlFor="privacyPolicyAccepted-login" className="text-xs font-normal cursor-pointer">
                       Acepto las{' '}
-                      <Button variant="link" type="button" className="p-0 h-auto text-xs text-primary hover:underline" onClick={() => setIsPrivacyPolicyOpen(true)} disabled={isFormLoading || isTemporarilyLocked}>
+                      <Button variant="link" type="button" className="p-0 h-auto text-xs text-primary hover:underline" onClick={() => setIsPrivacyPolicyOpen(true)} disabled={isFormLoading}>
                         Políticas de Privacidad
                       </Button>
                       .
@@ -244,7 +205,7 @@ export default function LoginForm() {
                         id="termsAndConditionsAccepted-login"
                         checked={field.value}
                         onCheckedChange={field.onChange}
-                        disabled={isFormLoading || isTemporarilyLocked}
+                        disabled={isFormLoading}
                         className="h-3 w-3 mt-[2px] [&_svg]:h-2.5 [&_svg]:w-2.5"
                       />
                     )}
@@ -252,7 +213,7 @@ export default function LoginForm() {
                   <div className="grid gap-0.5 leading-none">
                   <Label htmlFor="termsAndConditionsAccepted-login" className="text-xs font-normal cursor-pointer">
                     Acepto los{' '}
-                    <Button variant="link" type="button" className="p-0 h-auto text-xs text-primary hover:underline" onClick={() => setIsTermsOpen(true)} disabled={isFormLoading || isTemporarilyLocked}>
+                    <Button variant="link" type="button" className="p-0 h-auto text-xs text-primary hover:underline" onClick={() => setIsTermsOpen(true)} disabled={isFormLoading}>
                       Términos y Condiciones
                     </Button>
                     .
@@ -266,10 +227,10 @@ export default function LoginForm() {
             <Button 
               type="submit"
               className="w-full" 
-              disabled={isFormLoading || isTemporarilyLocked}
+              disabled={isFormLoading}
             >
               {isFormLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              {isTemporarilyLocked ? `Intenta de nuevo en ${countdown}s` : (isFormLoading ? 'Ingresando...' : 'Ingresar')}
+              {isFormLoading ? 'Ingresando...' : 'Ingresar'}
             </Button>
           </form>
         </CardContent>
@@ -285,7 +246,7 @@ export default function LoginForm() {
               href={whatsappAdminUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-primary hover:underline font-medium"
+              className="text-accent hover:underline font-medium"
             >
               ¿Quieres ser organizador/administrador? Contáctanos
             </a>

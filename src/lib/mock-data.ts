@@ -13,7 +13,6 @@ const fundadorProfileBase = {
   bio: 'El creador y fundador de la plataforma RIFAZO. Comprometido con rifas justas y emocionantes.',
   adminPaymentMethodsInfo: 'Acepto todos los métodos de pago principales. ¡Contacta para más detalles!',
   rafflesCreatedThisPeriod: 0,
-  rafflesEditedThisPeriod: 0,
   failedLoginAttempts: 0,
   lockoutUntil: null,
 };
@@ -26,6 +25,7 @@ export const initialPlatformUsers: Omit<ManagedUser, 'id'>[] = [
     role: 'founder',
     isBlocked: false,
     ...fundadorProfileBase,
+    favoriteRaffleIds: [],
   },
 ];
 
@@ -35,3 +35,4 @@ export const mockRaffles: Raffle[] = [];
 // These were already empty but kept for structure
 export const mockRaffleResults: RaffleResult[] = [];
 export const mockParticipations: Participation[] = [];
+

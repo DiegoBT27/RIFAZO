@@ -4,7 +4,7 @@
 import Link from 'next/link';
 import React, { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation'; 
-import { Ticket, Trophy, Menu as MenuIcon, LogOut, ShieldCheck, Headset, LogIn, UserCircle, UserPlus, Settings, Sun, Moon } from 'lucide-react';
+import { Ticket, Trophy, Menu as MenuIcon, LogOut, ShieldCheck, Headset, LogIn, UserCircle, UserPlus, Settings, Sun, Moon, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -54,6 +54,7 @@ export default function Header() {
     { href: "/results", label: "Resultados", icon: <Trophy />, public: true },
     { href: "/plans", label: "Planes", icon: <ShieldCheck />, public: true },
     { href: "/my-participations", label: "Mis Boletos", icon: <Ticket />, roles: ['user', 'admin', 'founder'] },
+    { href: "/my-favorites", label: "Mis Favoritos", icon: <Star />, roles: ['user', 'admin', 'founder'] },
     { 
       href: "/admin", 
       label: "Panel de Administrador", 
@@ -120,7 +121,7 @@ export default function Header() {
               size="icon"
               asChild
               title={item.label}
-              className={cn(pathname === item.href && "bg-accent text-accent-foreground hover:bg-accent/90")}
+              className={cn(pathname === item.href && "bg-primary text-primary-foreground hover:bg-primary/90")}
              >
               <Link href={item.href}>
                 {React.cloneElement(item.icon, { className: "h-5 w-5"})}
@@ -197,7 +198,7 @@ export default function Header() {
                               variant="ghost"
                               className={cn(
                                 "w-full justify-start text-sm py-2.5",
-                                pathname === item.href && "bg-accent text-accent-foreground hover:bg-accent/90"
+                                pathname === item.href && "bg-primary text-primary-foreground hover:bg-primary/90"
                               )}
                             >
                                {React.cloneElement(item.icon, { className: "mr-2 h-5 w-5"})} {item.label}

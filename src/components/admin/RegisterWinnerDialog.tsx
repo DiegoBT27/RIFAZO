@@ -1,8 +1,8 @@
 
 'use client';
 
-import { useState } from 'react';
-import { useForm, type SubmitHandler } from 'react-hook-form';
+import { useState, useEffect } from 'react';
+import { useForm, type SubmitHandler, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
@@ -19,17 +19,21 @@ import {
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Raffle, RaffleResult, Participation } from '@/types';
-import { Loader2, Trophy, UserCheck, Phone } from 'lucide-react';
+import type { Raffle, RaffleResult, Prize } from '@/types';
+import { Loader2, Trophy, Phone } from 'lucide-react';
 import { updateRaffle, addRaffleResult, getParticipationsByRaffleId, addActivityLog } from '@/lib/firebase/firestoreService';
 
 const registerWinnerSchema = z.object({
-  winningNumber: z.coerce
-    .number({ invalid_type_error: "Debe ser un número." })
-    .int({ message: "Debe ser un número entero." })
-    .min(1, { message: "El número ganador debe ser al menos 1." }),
-  winnerName: z.string().optional(),
-  winnerPhone: z.string().max(25, "Máximo 25 caracteres.").optional(),
+  winners: z.array(
+    z.object({
+      winningNumber: z.coerce
+        .number({ required_error: "El número es requerido.", invalid_type_error: "Debe ser un número." })
+        .int({ message: "Debe ser un número entero." })
+        .min(1, { message: "El número debe ser al menos 1." }),
+      winnerName: z.string().optional(),
+      winnerPhone: z.string().max(25, "Máximo 25 caracteres.").optional(),
+    })
+  ).min(1, "Debe haber al menos un ganador."),
 });
 
 type RegisterWinnerFormValues = z.infer<typeof registerWinnerSchema>;
@@ -46,73 +50,94 @@ export default function RegisterWinnerDialog({ raffle, isOpen, onOpenChange, onS
   const { user: currentUser } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<RegisterWinnerFormValues>({
+  const { control, register, handleSubmit, reset, formState: { errors } } = useForm<RegisterWinnerFormValues>({
     resolver: zodResolver(registerWinnerSchema),
     defaultValues: {
-      winningNumber: undefined,
-      winnerName: '',
-      winnerPhone: '',
-    }
+      winners: raffle.prizes.map(() => ({ winningNumber: undefined, winnerName: '', winnerPhone: '' })),
+    },
   });
+  
+  const { fields } = useFieldArray({
+    control,
+    name: "winners",
+  });
+  
+  useEffect(() => {
+    if (isOpen) {
+      reset({
+        winners: raffle.prizes.map(() => ({ winningNumber: undefined, winnerName: '', winnerPhone: '' })),
+      });
+    }
+  }, [isOpen, raffle, reset]);
 
   const onSubmit: SubmitHandler<RegisterWinnerFormValues> = async (data) => {
     setIsSubmitting(true);
-    if (!currentUser || !currentUser.username) { // Added direct check for currentUser
+    if (!currentUser?.username) {
       toast({ title: "Error de Autenticación", description: "No se pudo identificar al usuario.", variant: "destructive" });
       setIsSubmitting(false);
       return;
     }
+
     try {
-      if (data.winningNumber > raffle.totalNumbers) {
-        toast({
-          title: "Error de Validación",
-          description: `El número ganador (${data.winningNumber}) no puede ser mayor que el total de números de la rifa (${raffle.totalNumbers}).`,
-          variant: "destructive",
-        });
-        setIsSubmitting(false);
-        return;
-      }
-      
-      let finalWinnerName = data.winnerName;
-      let finalWinnerPhone = data.winnerPhone;
-
-      if ((!finalWinnerName || finalWinnerName.trim() === '') && data.winningNumber != null) {
-        try {
-          const participations = await getParticipationsByRaffleId(raffle.id);
-          const winningParticipation = participations.find(p =>
-            p.paymentStatus === 'confirmed' && 
-            p.numbers.includes(data.winningNumber!)
-          );
-
-          if (winningParticipation) {
-            if ((!finalWinnerName || finalWinnerName.trim() === '') && (winningParticipation.participantName || winningParticipation.participantLastName)) {
-                 finalWinnerName = `${winningParticipation.participantName || ''} ${winningParticipation.participantLastName || ''}`.trim();
-            }
-            if ((!finalWinnerPhone || finalWinnerPhone.trim() === '') && winningParticipation.participantPhone) {
-                finalWinnerPhone = winningParticipation.participantPhone;
-            }
+      for (const winner of data.winners) {
+         if (winner.winningNumber > raffle.totalNumbers) {
+            toast({
+              title: "Error de Validación",
+              description: `El número ganador (${winner.winningNumber}) no puede ser mayor que el total de números de la rifa (${raffle.totalNumbers}).`,
+              variant: "destructive",
+            });
+            setIsSubmitting(false);
+            return;
           }
-        } catch (searchError) {
-          console.error("Error searching for winning participation details:", searchError);
+      }
+
+      const winningNumbers: (number | null)[] = [];
+      const winnerNames: (string | null)[] = [];
+      const winnerPhones: (string | null)[] = [];
+      
+      const participations = await getParticipationsByRaffleId(raffle.id);
+
+      for (const winnerData of data.winners) {
+        let finalWinnerName = winnerData.winnerName;
+        let finalWinnerPhone = winnerData.winnerPhone;
+
+        if ((!finalWinnerName || finalWinnerName.trim() === '')) {
+            const winningParticipation = participations.find(p =>
+                p.paymentStatus === 'confirmed' && 
+                p.numbers.includes(winnerData.winningNumber!)
+            );
+
+            if (winningParticipation) {
+                if ((!finalWinnerName || finalWinnerName.trim() === '') && (winningParticipation.participantName || winningParticipation.participantLastName)) {
+                    finalWinnerName = `${winningParticipation.participantName || ''} ${winningParticipation.participantLastName || ''}`.trim();
+                }
+                if ((!finalWinnerPhone || finalWinnerPhone.trim() === '') && winningParticipation.participantPhone) {
+                    finalWinnerPhone = winningParticipation.participantPhone;
+                }
+            }
         }
+
+        winningNumbers.push(winnerData.winningNumber || null);
+        winnerNames.push(finalWinnerName || null);
+        winnerPhones.push(finalWinnerPhone || null);
       }
       
       const raffleUpdateData: Partial<Raffle> = {
-        winningNumber: data.winningNumber,
-        winnerName: finalWinnerName || null,
-        winnerPhone: finalWinnerPhone || null,
+        winningNumbers,
+        winnerNames,
+        winnerPhones,
         status: 'completed',
       };
-      await updateRaffle(raffle.id, raffleUpdateData, currentUser); // Pass currentUser as editor
+      await updateRaffle(raffle.id, raffleUpdateData, currentUser);
 
       const resultData: Omit<RaffleResult, 'id'> = {
         raffleId: raffle.id,
         raffleName: raffle.name,
-        winningNumber: data.winningNumber,
-        winnerName: finalWinnerName || null,
-        winnerPhone: finalWinnerPhone || null,
+        winningNumbers,
+        winnerNames,
+        winnerPhones,
         drawDate: raffle.drawDate,
-        prize: raffle.prize,
+        prizes: raffle.prizes,
         creatorUsername: raffle.creatorUsername,
       };
       await addRaffleResult(resultData);
@@ -124,15 +149,15 @@ export default function RegisterWinnerDialog({ raffle, isOpen, onOpenChange, onS
         details: { 
           raffleId: raffle.id, 
           raffleName: raffle.name,
-          winningNumber: data.winningNumber,
-          winnerName: finalWinnerName,
-          winnerPhone: finalWinnerPhone
+          winningNumbers,
+          winnerNames,
+          winnerPhones,
         }
       });
 
       toast({
-        title: "Ganador Registrado",
-        description: `Se ha registrado el número ganador para la rifa "${raffle.name}".`,
+        title: "Ganador(es) Registrado(s)",
+        description: `Se han registrado los resultados para la rifa "${raffle.name}".`,
       });
       reset();
       onSuccess();
@@ -141,7 +166,7 @@ export default function RegisterWinnerDialog({ raffle, isOpen, onOpenChange, onS
       console.error("Error registering winner:", error);
       toast({
         title: "Error",
-        description: "No se pudo registrar el ganador.",
+        description: "No se pudo registrar el/los ganador(es).",
         variant: "destructive",
       });
     } finally {
@@ -150,66 +175,71 @@ export default function RegisterWinnerDialog({ raffle, isOpen, onOpenChange, onS
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => {
-      if (!open) reset();
-      onOpenChange(open);
-    }}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="font-headline text-lg">Registrar Ganador para: {raffle.name}</DialogTitle>
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md p-0 flex flex-col h-auto max-h-[90vh]">
+        <DialogHeader className="p-6 pb-4 flex-shrink-0 border-b">
+          <DialogTitle className="font-headline text-lg">Registrar Ganadores para: {raffle.name}</DialogTitle>
           <DialogDescription>
-            Ingresa el número ganador. El nombre y teléfono son opcionales (se intentarán autocompletar si se dejan vacíos).
+            Ingresa el número ganador para cada premio. El nombre y teléfono son opcionales (se intentarán autocompletar).
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 py-2">
-          <div>
-            <Label htmlFor="winningNumber">Número Ganador</Label>
-            <Input
-              id="winningNumber"
-              type="number"
-              {...register("winningNumber")}
-              placeholder={`Entre 1 y ${raffle.totalNumbers}`}
-              disabled={isSubmitting}
-            />
-            {errors.winningNumber && <p className="text-sm text-destructive mt-1">{errors.winningNumber.message}</p>}
-          </div>
-          <div>
-            <Label htmlFor="winnerName">Nombre del Ganador (Opcional)</Label>
-            <Input
-              id="winnerName"
-              {...register("winnerName")}
-              placeholder="Ej: María Pérez (o dejar vacío para autocompletar)"
-              disabled={isSubmitting}
-            />
-            {errors.winnerName && <p className="text-sm text-destructive mt-1">{errors.winnerName.message}</p>}
-          </div>
-          <div>
-            <Label htmlFor="winnerPhone">Teléfono del Ganador (Opcional)</Label>
-            <div className="relative">
-              <Phone className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                id="winnerPhone"
-                type="tel"
-                {...register("winnerPhone")}
-                placeholder="Ej: 0414-1234567 (o dejar vacío para autocompletar)"
-                disabled={isSubmitting}
-                className="pl-8"
-              />
-            </div>
-            {errors.winnerPhone && <p className="text-sm text-destructive mt-1">{errors.winnerPhone.message}</p>}
-          </div>
-          <DialogFooter className="pt-2">
+        
+        <div className="flex-grow overflow-y-auto">
+          <form id="register-winner-form" onSubmit={handleSubmit(onSubmit)} className="px-6 py-4 space-y-4">
+            {fields.map((field, index) => (
+              <div key={field.id} className="p-3 border rounded-md space-y-3 bg-secondary/30">
+                <h4 className="font-semibold text-sm">Premio {index + 1}: <span className="font-normal italic">{raffle.prizes[index].description}</span></h4>
+                <div>
+                  <Label htmlFor={`winners.${index}.winningNumber`}>Número Ganador</Label>
+                  <Input
+                    id={`winners.${index}.winningNumber`}
+                    type="number"
+                    {...register(`winners.${index}.winningNumber`)}
+                    placeholder={`Entre 1 y ${raffle.totalNumbers}`}
+                    disabled={isSubmitting}
+                  />
+                  {errors.winners?.[index]?.winningNumber && <p className="text-sm text-destructive mt-1">{errors.winners?.[index]?.winningNumber?.message}</p>}
+                </div>
+                <div>
+                  <Label htmlFor={`winners.${index}.winnerName`}>Nombre del Ganador (Opcional)</Label>
+                  <Input
+                    id={`winners.${index}.winnerName`}
+                    {...register(`winners.${index}.winnerName`)}
+                    placeholder="Dejar vacío para autocompletar"
+                    disabled={isSubmitting}
+                  />
+                  {errors.winners?.[index]?.winnerName && <p className="text-sm text-destructive mt-1">{errors.winners?.[index]?.winnerName?.message}</p>}
+                </div>
+                <div>
+                  <Label htmlFor={`winners.${index}.winnerPhone`}>Teléfono del Ganador (Opcional)</Label>
+                  <div className="relative">
+                    <Phone className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id={`winners.${index}.winnerPhone`}
+                      type="tel"
+                      {...register(`winners.${index}.winnerPhone`)}
+                      placeholder="Dejar vacío para autocompletar"
+                      disabled={isSubmitting}
+                      className="pl-8"
+                    />
+                  </div>
+                  {errors.winners?.[index]?.winnerPhone && <p className="text-sm text-destructive mt-1">{errors.winners?.[index]?.winnerPhone?.message}</p>}
+                </div>
+              </div>
+            ))}
+          </form>
+        </div>
+
+        <DialogFooter className="p-6 pt-4 flex-shrink-0 border-t bg-background">
             <DialogClose asChild>
               <Button type="button" variant="outline" disabled={isSubmitting} className="text-xs h-8">Cancelar</Button>
             </DialogClose>
-            <Button type="submit" disabled={isSubmitting} className="text-xs h-8">
+            <Button type="submit" form="register-winner-form" disabled={isSubmitting} className="text-xs h-8">
               {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trophy className="mr-2 h-4 w-4" />}
-              {isSubmitting ? 'Registrando...' : 'Registrar Ganador'}
+              {isSubmitting ? 'Registrando...' : 'Registrar Ganadores'}
             </Button>
-          </DialogFooter>
-        </form>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
-

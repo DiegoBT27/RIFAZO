@@ -2,6 +2,12 @@
 
 export type PlanName = 'free' | 'standard' | 'pro';
 
+export interface Prize {
+  description: string;
+  lotteryName?: string | null;
+  drawTime?: string | null;
+}
+
 export interface AcceptedPaymentMethod {
   id: string; 
   name: string; 
@@ -18,15 +24,13 @@ export interface Raffle {
   pricePerTicket: number;
   totalNumbers: number;
   soldNumbers: number[];
-  prize: string;
+  prizes: Prize[];
   acceptedPaymentMethods?: AcceptedPaymentMethod[];
   creatorUsername?: string;
   effectiveSoldNumbers?: number[];
-  lotteryName?: string | null;
-  drawTime?: string | null;
-  winningNumber?: number | null;
-  winnerName?: string | null;
-  winnerPhone?: string | null; 
+  winningNumbers?: (number | null)[];
+  winnerNames?: (string | null)[];
+  winnerPhones?: (string | null)[];
   status?: 'active' | 'pending_draw' | 'completed' | 'cancelled';
 }
 
@@ -34,11 +38,11 @@ export interface RaffleResult {
   id: string; // Firestore ID
   raffleId: string; // ID de la rifa original
   raffleName: string;
-  winningNumber: number;
-  winnerName?: string | null;
-  winnerPhone?: string | null; 
+  winningNumbers: (number | null)[]; 
+  winnerNames?: (string | null)[]; 
+  winnerPhones?: (string | null)[]; 
   drawDate: string; // Fecha en que se realizó el sorteo (de la rifa original)
-  prize: string; // Premio otorgado (de la rifa original)
+  prizes: Prize[]; 
   creatorUsername?: string; // Username del creador de la rifa
 }
 
@@ -86,6 +90,8 @@ export interface ManagedUser {
   averageRating?: number;
   ratingCount?: number;
 
+  favoriteRaffleIds?: string[];
+
   // Plan fields
   plan?: PlanName | null;
   planActive?: boolean;
@@ -93,7 +99,6 @@ export interface ManagedUser {
   planEndDate?: string | null; // ISO Date string
   planAssignedBy?: string | null; // username of the founder who assigned the plan
   rafflesCreatedThisPeriod?: number;
-  rafflesEditedThisPeriod?: number; // Added for edit limit tracking
 }
 
 export type ActivityLogActionType = 
@@ -131,3 +136,7 @@ export interface Rating {
   comment?: string; // Optional comment
   createdAt: any; // Firestore ServerTimestamp
 }
+
+
+
+

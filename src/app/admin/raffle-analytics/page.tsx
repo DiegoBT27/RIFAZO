@@ -8,7 +8,7 @@ import SectionTitle from '@/components/shared/SectionTitle';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { BarChart as BarChartIconLucide, Loader2, AlertCircle, ListChecks, TrendingUp, DollarSign, Percent, CheckCircle, XCircle, Clock, Inbox } from 'lucide-react';
 import type { Raffle, Participation } from '@/types';
-import { getRaffles, getParticipations } from '@/lib/firebase/firestoreService';
+import { getRaffles, getParticipations, getParticipationsByRaffleIds } from '@/lib/firebase/firestoreService';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -71,17 +71,25 @@ export default function RaffleAnalyticsPage() {
     }
     setPageIsLoading(true);
     try {
-      const [allRaffles, allParticipations] = await Promise.all([
-        getRaffles(),
-        getParticipations()
-      ]);
+      const allRaffles = await getRaffles();
+      let filteredRaffles: Raffle[];
+      let participationsForAnalytics: Participation[];
 
-      const filteredRaffles = user.role === 'founder'
-        ? allRaffles
-        : allRaffles.filter(r => r.creatorUsername === user.username);
-
+      if (user.role === 'founder') {
+        filteredRaffles = allRaffles;
+        participationsForAnalytics = await getParticipations();
+      } else { // Admin
+          filteredRaffles = allRaffles.filter(r => r.creatorUsername === user.username);
+          const adminRaffleIds = filteredRaffles.map(r => r.id);
+          if (adminRaffleIds.length > 0) {
+              participationsForAnalytics = await getParticipationsByRaffleIds(adminRaffleIds);
+          } else {
+              participationsForAnalytics = [];
+          }
+      }
+      
       const calculatedData: RaffleAnalyticsData[] = filteredRaffles.map(raffle => {
-        const raffleParticipations = allParticipations.filter(p => p.raffleId === raffle.id);
+        const raffleParticipations = participationsForAnalytics.filter(p => p.raffleId === raffle.id);
 
         let totalConfirmedTickets = 0;
         let pendingTickets = 0;

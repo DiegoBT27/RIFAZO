@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { AlertCircle, Loader2, UserPlus, KeyRound, FileText } from 'lucide-react';
+import { AlertCircle, Loader2, UserPlus, FileText } from 'lucide-react';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { addUser, getUserByUsername } from '@/lib/firebase/firestoreService';
@@ -23,7 +23,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
@@ -78,6 +77,18 @@ export default function RegisterForm() {
         username: data.username,
         password: data.password,
         role: 'user',
+        isBlocked: false,
+        favoriteRaffleIds: [],
+        failedLoginAttempts: 0,
+        lockoutUntil: null,
+        averageRating: 0,
+        ratingCount: 0,
+        plan: null,
+        planActive: false,
+        planStartDate: null,
+        planEndDate: null,
+        planAssignedBy: null,
+        rafflesCreatedThisPeriod: 0,
       };
 
       await addUser(newUserPartial);
@@ -131,9 +142,7 @@ export default function RegisterForm() {
                     {...register("password")}
                     placeholder="Mínimo 6 caracteres"
                     disabled={isLoading}
-                    className="pr-10"
                   />
-                  <KeyRound className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 </div>
               {errors.password && <p className="text-sm text-destructive mt-1">{errors.password.message}</p>}
             </div>
@@ -146,9 +155,7 @@ export default function RegisterForm() {
                     {...register("confirmPassword")}
                     placeholder="Repite tu contraseña"
                     disabled={isLoading}
-                    className="pr-10"
                   />
-                  <KeyRound className="absolute right-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
               </div>
               {errors.confirmPassword && <p className="text-sm text-destructive mt-1">{errors.confirmPassword.message}</p>}
             </div>

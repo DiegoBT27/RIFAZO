@@ -1,8 +1,9 @@
 
+
 'use client';
 
 import { useState, type ChangeEvent, useEffect, useCallback } from 'react';
-import { useForm, type SubmitHandler, Controller } from 'react-hook-form';
+import { useForm, type SubmitHandler, Controller, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { format, parse } from 'date-fns';
@@ -25,13 +26,13 @@ import {
 } from "@/components/ui/select";
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Raffle, AcceptedPaymentMethod, ManagedUser } from '@/types';
+import type { Raffle, AcceptedPaymentMethod, ManagedUser, Prize } from '@/types';
 import { AVAILABLE_PAYMENT_METHODS } from '@/lib/payment-methods';
 import { DRAW_TIMES } from '@/lib/lottery-data';
 import { getPlanDetails, type PlanDetails as AppPlanDetails } from '@/lib/config/plans';
 import PlanLimitDialog from '@/components/admin/PlanLimitDialog';
 
-import { CalendarIcon } from 'lucide-react';
+import { CalendarIcon, PlusCircle, Trash2 } from 'lucide-react';
 import { Loader2 } from 'lucide-react';
 import { UploadCloud } from 'lucide-react';
 import { Image as ImageIcon } from 'lucide-react';
@@ -52,18 +53,21 @@ const todayAtMidnight = new Date();
 todayAtMidnight.setHours(0, 0, 0, 0);
 const PLACEHOLDER_IMAGE_URL = "https://i.ibb.co/6RJzmG1s/Rifazo.png";
 
+const prizeSchema = z.object({
+  description: z.string().min(3, { message: "La descripción del premio debe tener al menos 3 caracteres." }),
+  lotteryName: z.string().optional().nullable(),
+  drawTime: z.string().optional().nullable(),
+});
 
-const createEditRaffleFormSchema = (planMaxTickets: number | Infinity, planDisplayName: string, planAllowsCustomImage: boolean, raffleOriginalImage: string | undefined) => z.object({
+const createEditRaffleFormSchema = (planMaxTickets: number | Infinity, planDisplayName: string, planAllowsMultiplePrizes: boolean) => z.object({
   id: z.string(),
   name: z.string().min(5, { message: "El nombre debe tener al menos 5 caracteres." }),
   description: z.string().min(10, { message: "La descripción debe tener al menos 10 caracteres." }),
-  image: z.string().min(1, { message: "Se requiere una imagen para la rifa." }),
-  prize: z.string().min(3, { message: "El premio debe tener al menos 3 caracteres." }),
+  image: z.string().optional(),
+  prizes: z.array(prizeSchema).min(1, { message: "Debes definir al menos un premio." }).max(planAllowsMultiplePrizes ? 3 : 1, { message: `Tu plan solo permite ${planAllowsMultiplePrizes ? '3' : '1'} premio(s).` }),
   pricePerTicket: z.coerce.number().positive({ message: "El precio debe ser un número positivo." }),
   totalNumbers: z.coerce.number().int().min(10, { message: "Debe haber al menos 10 números." }),
   drawDate: z.date({ required_error: "La fecha del sorteo es obligatoria."}),
-  lotteryName: z.string().optional().nullable(),
-  drawTime: z.string().optional().nullable(),
   selectedPaymentMethodIds: z.array(z.string())
     .min(1, { message: "Debes seleccionar al menos un método de pago." }),
   paymentMethodDetails: z.object({
@@ -108,13 +112,6 @@ const createEditRaffleFormSchema = (planMaxTickets: number | Infinity, planDispl
       path: ["totalNumbers"],
     });
   }
-  if (!planAllowsCustomImage && data.image && data.image !== PLACEHOLDER_IMAGE_URL && data.image !== raffleOriginalImage) {
-    ctx.addIssue({
-     code: z.ZodIssueCode.custom,
-     message: `Tu plan actual (${planDisplayName}) no permite cambiar a una nueva imagen personalizada. Se mantendrá la imagen actual o una por defecto si la actual es el placeholder.`,
-     path: ["image"],
-   });
- }
 });
 
 
@@ -132,7 +129,6 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
   const [imagePreview, setImagePreview] = useState<string | null>(raffle?.image || null);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isPlanLimitDialogOpen, setIsPlanLimitDialogOpen] = useState(false);
-  const [planLimitMessage, setPlanLimitMessage] = useState("esta acción");
   const formPrefix = 'edit-';
   const [initialFormState, setInitialFormState] = useState<EditRaffleFormValues | null>(null);
 
@@ -143,16 +139,14 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
     raffleLimit: Infinity,
     maxTicketsPerRaffle: Infinity,
     canEditRaffles: true,
-    editRaffleLimit: Infinity,
     canDisplayRatingsPublicly: true,
+    includesMultiplePrizes: true,
     includesCustomImage: true,
     includesAdvancedStats: true,
     includesDetailedAnalytics: true,
     includesFeaturedListing: true,
-    includesAiReceiptValidation: true,
-    includesAutomatedBackups: true,
-    includesActivityLog: true,
     includesBackupRestore: true, 
+    includesExclusiveSupport: true,
     featureListIds: [],
     tagline: '',
   };
@@ -164,8 +158,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
   const currentEditRaffleFormSchema = createEditRaffleFormSchema(
     effectivePlanDetails.maxTicketsPerRaffle,
     effectivePlanDetails.displayName,
-    effectivePlanDetails.includesCustomImage,
-    raffle?.image 
+    effectivePlanDetails.includesMultiplePrizes
   );
 
   const parseInitialPaymentDetails = useCallback((acceptedMethods: AcceptedPaymentMethod[] | undefined) => {
@@ -198,16 +191,19 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
       id: raffle?.id || '',
       name: raffle?.name || '',
       description: raffle?.description || '',
-      image: raffle?.image || PLACEHOLDER_IMAGE_URL,
-      prize: raffle?.prize || '',
+      image: raffle?.image || '',
+      prizes: (raffle?.prizes && raffle.prizes.length > 0) ? raffle.prizes : [{ description: '', lotteryName: null, drawTime: 'unspecified_time' }],
       pricePerTicket: raffle?.pricePerTicket || 1,
       totalNumbers: raffle?.totalNumbers || 100,
       drawDate: raffle?.drawDate ? parse(raffle.drawDate, 'yyyy-MM-dd', new Date()) : todayAtMidnight,
-      lotteryName: raffle?.lotteryName || null,
-      drawTime: raffle?.drawTime || 'unspecified_time',
       selectedPaymentMethodIds: raffle?.acceptedPaymentMethods?.map(pm => pm.id) || [],
       paymentMethodDetails: parseInitialPaymentDetails(raffle?.acceptedPaymentMethods)
     }
+  });
+
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: "prizes"
   });
   
   useEffect(() => {
@@ -216,31 +212,24 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
         id: raffle.id,
         name: raffle.name,
         description: raffle.description,
-        image: raffle.image || (effectivePlanDetails.includesCustomImage ? '' : PLACEHOLDER_IMAGE_URL),
-        prize: raffle.prize,
+        image: raffle.image || '',
+        prizes: (raffle.prizes && raffle.prizes.length > 0) ? raffle.prizes : [{ description: '', lotteryName: null, drawTime: 'unspecified_time' }],
         pricePerTicket: raffle.pricePerTicket,
         totalNumbers: raffle.totalNumbers,
         drawDate: parse(raffle.drawDate, 'yyyy-MM-dd', new Date()),
-        lotteryName: raffle.lotteryName || null,
-        drawTime: raffle.drawTime || 'unspecified_time',
         selectedPaymentMethodIds: raffle.acceptedPaymentMethods?.map(pm => pm.id) || [],
         paymentMethodDetails: parseInitialPaymentDetails(raffle.acceptedPaymentMethods),
       };
       reset(initialData);
       setInitialFormState(initialData);
-      setImagePreview(initialData.image);
+      setImagePreview(initialData.image || null);
     }
-  }, [raffle, reset, parseInitialPaymentDetails, effectivePlanDetails.includesCustomImage]);
+  }, [raffle, reset, parseInitialPaymentDetails]);
 
 
   const selectedPaymentMethodIds = watch("selectedPaymentMethodIds");
 
   const handleImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
-    if (currentUser?.role !== 'founder' && !effectivePlanDetails.includesCustomImage) {
-      toast({ title: "Plan Limitado", description: "Tu plan actual no permite cambiar la imagen.", variant: "destructive" });
-      event.target.value = ''; 
-      return;
-    }
     const file = event.target.files?.[0];
     if (file) {
       if (file.size > 700 * 1024) {
@@ -276,22 +265,6 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
       return;
     }
 
-
-    const isFounder = currentUser.role === 'founder';
-    if (!isFounder && !effectivePlanDetails.canEditRaffles) {
-        setPlanLimitMessage("editar rifas");
-        setIsPlanLimitDialogOpen(true);
-        setIsLoading(false);
-        return;
-    }
-    if (!isFounder && effectivePlanDetails.canEditRaffles === 'limited' && (currentUser.rafflesEditedThisPeriod || 0) >= (effectivePlanDetails.editRaffleLimit || Infinity)) {
-        setPlanLimitMessage(`editar más de ${effectivePlanDetails.editRaffleLimit} rifas`);
-        setIsPlanLimitDialogOpen(true);
-        setIsLoading(false);
-        return;
-    }
-
-
     const acceptedPaymentMethodsResult: AcceptedPaymentMethod[] = data.selectedPaymentMethodIds
       .map(id => {
         const methodOption = AVAILABLE_PAYMENT_METHODS.find(pm => pm.id === id);
@@ -317,31 +290,17 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
       })
       .filter(Boolean) as AcceptedPaymentMethod[];
       
-    let finalImage = initialFormState.image;
-    if (data.image !== initialFormState.image) { 
-      if (isFounder || effectivePlanDetails.includesCustomImage) {
-        finalImage = data.image;
-      } else {
-        
-        finalImage = (initialFormState.image && initialFormState.image !== PLACEHOLDER_IMAGE_URL) ? initialFormState.image : PLACEHOLDER_IMAGE_URL;
-        
-        toast({ title: "Cambio de Imagen Ignorado", description: "Tu plan no permite imágenes personalizadas. Se mantuvo la imagen original o una por defecto.", variant: "default" });
-      }
-    } else if (!finalImage && !effectivePlanDetails.includesCustomImage) { 
-      finalImage = PLACEHOLDER_IMAGE_URL;
-    }
+    let finalImage = data.image || PLACEHOLDER_IMAGE_URL;
 
 
     const raffleDataForDb: Partial<Raffle> = {
       name: data.name,
       description: data.description,
       image: finalImage,
-      prize: data.prize,
+      prizes: data.prizes,
       pricePerTicket: data.pricePerTicket,
       totalNumbers: data.totalNumbers,
       drawDate: format(data.drawDate, 'yyyy-MM-dd'),
-      lotteryName: data.lotteryName && data.lotteryName.trim() !== '' ? data.lotteryName.trim() : null,
-      drawTime: (data.drawTime && data.drawTime !== 'unspecified_time') ? data.drawTime : null,
       acceptedPaymentMethods: acceptedPaymentMethodsResult,
     };
 
@@ -349,6 +308,10 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
     (Object.keys(raffleDataForDb) as Array<keyof typeof raffleDataForDb>).forEach(key => {
         if (key === 'drawDate') {
             if (format(data.drawDate, 'yyyy-MM-dd') !== format(initialFormState.drawDate, 'yyyy-MM-dd')) {
+                actualUpdatedFields.push(key);
+            }
+        } else if (key === 'prizes') {
+            if (JSON.stringify(data.prizes) !== JSON.stringify(initialFormState.prizes)) {
                 actualUpdatedFields.push(key);
             }
         } else if (key === 'acceptedPaymentMethods') {
@@ -390,10 +353,9 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
         ...raffle,
         ...raffleDataForDb,
         id: data.id,
+        prizes: raffleDataForDb.prizes || [],
         creatorUsername: raffle.creatorUsername,
         soldNumbers: raffle.soldNumbers,
-        lotteryName: raffleDataForDb.lotteryName,
-        drawTime: raffleDataForDb.drawTime,
         acceptedPaymentMethods: acceptedPaymentMethodsResult,
       };
 
@@ -401,11 +363,14 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
 
     } catch (error: any) {
       console.error("Error updating raffle in Firestore:", error);
-       if (error.message.includes("plan actual no permite editar") || error.message.includes("permiso para editar esta rifa") || error.message.includes("alcanzado el límite de ediciones")) {
-        setPlanLimitMessage(error.message); // Set a more specific message if available
+      const errorMessage = error.message || "No se pudo actualizar la rifa en Firestore.";
+      
+      if (errorMessage.includes("plan actual no permite editar") || errorMessage.includes("permiso para editar esta rifa") || errorMessage.includes("límite de ediciones")) {
         setIsPlanLimitDialogOpen(true);
+      } else if (errorMessage.includes("excede el límite de tu plan") || errorMessage.includes("no permite")) {
+        toast({ title: "Límite de Plan Excedido", description: errorMessage, variant: "destructive", duration: 7000 });
       } else {
-        toast({ title: "Error de Guardado", description: error.message || "No se pudo actualizar la rifa en Firestore.", variant: "destructive" });
+        toast({ title: "Error de Guardado", description: errorMessage, variant: "destructive" });
       }
     } finally {
       setIsLoading(false);
@@ -537,8 +502,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
                 htmlFor={`${formPrefix}image-upload-input`}
                 className={cn(
                   buttonVariants({ variant: "outline", size: "icon" }),
-                  "cursor-pointer",
-                  (currentUser?.role !=='founder' && !effectivePlanDetails.includesCustomImage) && "opacity-50 cursor-not-allowed"
+                  "cursor-pointer"
                 )}
                 title="Cambiar Imagen"
               >
@@ -551,20 +515,73 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
                 accept="image/png, image/jpeg, image/webp"
                 onChange={handleImageUpload}
                 className="hidden"
-                disabled={currentUser?.role !== 'founder' && !effectivePlanDetails.includesCustomImage}
               />
             </div>
           </div>
-          {(currentUser?.role !== 'founder' && !effectivePlanDetails.includesCustomImage) && (
-            <p className="text-xs text-muted-foreground mt-1">Tu plan actual ({effectivePlanDetails.displayName}) no permite cambiar la imagen. Se mantendrá la imagen actual.</p>
-          )}
           {errors.image && <p className="text-xs text-destructive mt-1">{errors.image.message}</p>}
         </div>
 
         <div>
-          <Label htmlFor={`${formPrefix}prize`} className="text-xs sm:text-sm">Premio Principal</Label>
-          <Input id={`${formPrefix}prize`} {...register("prize")} placeholder="Ej: Un iPhone 15 Pro Max" className="h-9 text-xs sm:text-sm"/>
-          {errors.prize && <p className="text-xs text-destructive mt-1">{errors.prize.message}</p>}
+          <Label className="text-xs sm:text-sm">Premios</Label>
+          <div className="space-y-3">
+            {fields.map((field, index) => (
+              <div key={field.id} className="p-3 border rounded-lg space-y-2 bg-muted/30">
+                 <div className="flex justify-between items-center">
+                    <Label htmlFor={`prize-desc-${index}`} className="text-xs font-semibold">Premio {index + 1}</Label>
+                    {fields.length > 1 && (
+                        <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} className="h-7 w-7">
+                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                    )}
+                </div>
+                 <Input
+                    {...register(`prizes.${index}.description`)}
+                    id={`prize-desc-${index}`}
+                    placeholder={`Descripción del ${index + 1}º premio`}
+                    className="h-9 text-xs sm:text-sm"
+                  />
+                  {errors.prizes?.[index]?.description && <p className="text-xs text-destructive mt-1">{errors.prizes[index]?.description?.message}</p>}
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                     <div>
+                        <Label htmlFor={`prize-lottery-${index}`} className="text-xs text-muted-foreground">Método Sorteo (Opc.)</Label>
+                        <Input 
+                            id={`prize-lottery-${index}`}
+                            {...register(`prizes.${index}.lotteryName`)}
+                            placeholder="Ej: Lotería XYZ"
+                            className="h-9 text-xs sm:text-sm"
+                        />
+                     </div>
+                     <div>
+                        <Label htmlFor={`prize-time-${index}`} className="text-xs text-muted-foreground">Hora Sorteo (Opc.)</Label>
+                        <Controller
+                          name={`prizes.${index}.drawTime`}
+                          control={control}
+                          render={({ field: timeField }) => (
+                            <Select onValueChange={timeField.onChange} value={timeField.value || 'unspecified_time'}>
+                              <SelectTrigger id={`prize-time-${index}`} className="h-9 text-xs sm:text-sm">
+                                <SelectValue placeholder="Selecciona hora" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="unspecified_time">No Especificada</SelectItem>
+                                {DRAW_TIMES.map(time => <SelectItem key={time} value={time}>{time}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        />
+                     </div>
+                  </div>
+              </div>
+            ))}
+             {errors.prizes && typeof errors.prizes.message === 'string' && (
+              <p className="text-xs text-destructive mt-1">{errors.prizes.message}</p>
+            )}
+          </div>
+           {(currentUser?.role === 'founder' || effectivePlanDetails.includesMultiplePrizes) && fields.length < 3 && (
+            <Button type="button" variant="outline" size="sm" onClick={() => append({ description: '', lotteryName: null, drawTime: 'unspecified_time' })} className="mt-2 text-xs">
+              <PlusCircle className="mr-1.5 h-3.5 w-3.5" /> Añadir Premio
+            </Button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
@@ -581,7 +598,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
         </div>
 
         <div>
-          <Label htmlFor={`${formPrefix}drawDate-trigger`} className="text-xs sm:text-sm">Fecha del Sorteo</Label>
+          <Label htmlFor={`${formPrefix}drawDate-trigger`} className="text-xs sm:text-sm">Fecha Principal del Sorteo</Label>
           <Controller
             name="drawDate"
             control={control}
@@ -614,38 +631,6 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
             )}
           />
           {errors.drawDate && <p className="text-xs text-destructive mt-1">{errors.drawDate.message}</p>}
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-           <div>
-            <Label htmlFor={`${formPrefix}lotteryName-input`} className="text-xs sm:text-sm">Método de Rifa (Opcional)</Label>
-            <Input
-              id={`${formPrefix}lotteryName-input`}
-              {...register("lotteryName")}
-              placeholder="Ej: Sorteo en vivo, Lotería XYZ"
-              className="h-9 text-xs sm:text-sm"
-            />
-            {errors.lotteryName && <p className="text-xs text-destructive mt-1">{errors.lotteryName.message}</p>}
-          </div>
-          <div>
-            <Label htmlFor={`${formPrefix}drawTime-select`} className="text-xs sm:text-sm">Hora del Sorteo (Opcional)</Label>
-            <Controller
-              name="drawTime"
-              control={control}
-              render={({ field }) => (
-                <Select onValueChange={field.onChange} value={field.value || 'unspecified_time'}>
-                  <SelectTrigger id={`${formPrefix}drawTime-select`} className="h-9 text-xs sm:text-sm">
-                    <SelectValue placeholder="Selecciona una hora o No Especificada" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="unspecified_time">No Especificada</SelectItem>
-                    {DRAW_TIMES.map(time => <SelectItem key={time} value={time}>{time}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              )}
-            />
-            {errors.drawTime && <p className="text-xs text-destructive mt-1">{errors.drawTime.message}</p>}
-          </div>
         </div>
 
         <Separator className="my-3 sm:my-4" />
@@ -685,10 +670,8 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
     <PlanLimitDialog
         isOpen={isPlanLimitDialogOpen}
         onOpenChange={setIsPlanLimitDialogOpen}
-        featureName={planLimitMessage}
+        featureName={"realizar esta acción"}
     />
     </>
   );
 }
-
-

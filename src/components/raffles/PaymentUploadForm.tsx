@@ -97,25 +97,21 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    console.log('[PaymentUploadForm] handleSubmit triggered.');
     setIsSubmitting(true);
 
     if (!currentUser?.username) {
       toast({ title: "Error de Autenticación", description: "No se pudo identificar al usuario. Por favor, vuelve a iniciar sesión.", variant: "destructive" });
       setIsSubmitting(false);
-      console.log('[PaymentUploadForm] Auth error, submission aborted.');
       return;
     }
 
     if (selectedNumbersCount === 0 || !participantName || !participantLastName || !participantIdCard || !participantPhone) {
       toast({ title: "Error de Formulario", description: "Por favor, completa todos los campos requeridos.", variant: "destructive" });
       setIsSubmitting(false);
-      console.log('[PaymentUploadForm] Form validation error, submission aborted.');
       return;
     }
 
     try {
-      console.log('[PaymentUploadForm] Creating participation data...');
       const newParticipationData: Omit<Participation, 'id'> = {
         raffleId: raffle.id,
         raffleName: raffle.name,
@@ -131,15 +127,11 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
         paymentNotes: notes,
       };
 
-      console.log('[PaymentUploadForm] Saving participation to Firestore...');
       const savedParticipation = await addParticipation(newParticipationData);
-      console.log('[PaymentUploadForm] Participation saved with ID:', savedParticipation.id);
       
       onPaymentSuccess();
-      console.log('[PaymentUploadForm] onPaymentSuccess callback executed.');
       
       downloadTicketTextFile({ ...newParticipationData, id: savedParticipation.id }, raffle, totalAmount);
-      console.log('[PaymentUploadForm] Ticket text file download initiated.');
       
       toast({
         title: "Participación Registrada",
@@ -161,7 +153,6 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
 `;
       const whatsappUrl = `https://wa.me/${finalWhatsappNumber}?text=${encodeURIComponent(whatsappMessage)}`;
       
-      console.log(`[PaymentUploadForm] Preparing to open WhatsApp (${finalWhatsappNumber}) and redirect.`);
       setTimeout(() => {
         window.open(whatsappUrl, '_blank');
         setTimeout(() => router.push('/my-participations'), 1500);
@@ -173,13 +164,11 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
       setParticipantLastName('');
       setParticipantIdCard('');
       setParticipantPhone('');
-      console.log('[PaymentUploadForm] Form fields reset.');
 
     } catch (error) {
       console.error("[PaymentUploadForm] Error in handleSubmit's try block:", error);
       toast({ title: "Error al Procesar", description: "No se pudo registrar tu participación. Intenta de nuevo.", variant: "destructive" });
     } finally {
-      console.log('[PaymentUploadForm] handleSubmit finally block. Setting isSubmitting to false.');
       setIsSubmitting(false);
     }
   };
@@ -233,7 +222,7 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
         <Textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ej: Banco desde el que pagarás, preferencia de contacto, etc." disabled={isSubmitting} className="text-xs min-h-[60px]" rows={2}/>
       </div>
 
-      <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white text-sm h-9 sm:h-10" disabled={selectedNumbersCount === 0 || !participantName || !participantLastName || !participantIdCard || !participantPhone || isSubmitting}>
+      <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground text-sm h-9 sm:h-10" disabled={selectedNumbersCount === 0 || !participantName || !participantLastName || !participantIdCard || !participantPhone || isSubmitting}>
         {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageSquare className="mr-2 h-4 w-4" />}
         {isSubmitting ? 'Procesando...' : `Participar`}
       </Button>

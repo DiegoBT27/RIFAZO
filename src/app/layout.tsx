@@ -1,5 +1,5 @@
-
 import type {Metadata} from 'next';
+import {Inter} from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import Header from '@/components/layout/Header';
@@ -8,6 +8,9 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { ThemeProvider } from '@/contexts/ThemeContext'; // Import ThemeProvider
 import PageLoader from '@/components/layout/PageLoader';
 import React from 'react'; // Ensure React is imported
+import { cn } from '@/lib/utils';
+
+const inter = Inter({subsets: ['latin'], variable: '--font-sans'});
 
 export const metadata: Metadata = {
   title: 'RIFAZO',
@@ -26,7 +29,7 @@ export default function RootLayout({
 
   // Unwrap params and searchParams if received
   // This is a pattern to ensure dynamic data is handled correctly by Next.js
-  // when its properties might be enumerated directly in Server Components.
+  // when its properties might be enumerated directly in a Server Component.
   const params = receivedParams ? React.use(receivedParams) : undefined;
   const searchParams = receivedSearchParams ? React.use(receivedSearchParams) : undefined;
 
@@ -48,13 +51,9 @@ export default function RootLayout({
   }
 
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet" />
-      </head>
-      <body className="font-body antialiased flex flex-col min-h-screen">
+    <html lang="es" suppressHydrationWarning>
+      <head />
+      <body className={cn('antialiased flex flex-col min-h-screen font-sans', inter.variable)}>
         <ThemeProvider> {/* Wrap AuthProvider with ThemeProvider */}
           <AuthProvider>
             <Header />

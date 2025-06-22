@@ -33,7 +33,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Dialog,
@@ -46,7 +45,7 @@ import {
 } from '@/components/ui/dialog';
 import type { ManagedUser } from '@/types';
 import { ScrollArea } from '../ui/scroll-area';
-import { getUsers, addUser, updateUser, deleteUser, getUserByUsername, addActivityLog, resetUserLockout } from '@/lib/firebase/firestoreService';
+import { getUsers, addUser, updateUser, deleteUser, getUserByUsername, addActivityLog, resetUserLockout, getUserByEmail } from '@/lib/firebase/firestoreService';
 import { cn } from '@/lib/utils';
 
 
@@ -202,6 +201,7 @@ export default function UserManagementClient() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
   const [userToUnlock, setUserToUnlock] = useState<ManagedUser | null>(null);
+  const [userToDelete, setUserToDelete] = useState<ManagedUser | null>(null);
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
 
@@ -384,12 +384,6 @@ export default function UserManagementClient() {
       return;
     }
     try {
-      const existingUser = await getUserByUsername(data.username);
-      if (existingUser) {
-        toast({ title: "Error", description: "El nombre de usuario ya existe.", variant: "destructive" });
-        setIsSubmitting(false);
-        return;
-      }
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { id, confirmPassword, ...userDataForDb } = data as Partial<ManagedUser> & { confirmPassword?: string };
 
@@ -398,6 +392,7 @@ export default function UserManagementClient() {
         password: userDataForDb.password!,
         role: userDataForDb.role!,
         isBlocked: userDataForDb.isBlocked || false,
+        favoriteRaffleIds: [],
         organizerType: userDataForDb.role === 'user' ? undefined : userDataForDb.organizerType,
         fullName: userDataForDb.role === 'user' ? undefined : (userDataForDb.organizerType === 'individual' ? userDataForDb.fullName : undefined),
         companyName: userDataForDb.role === 'user' ? undefined : (userDataForDb.organizerType === 'company' ? userDataForDb.companyName : undefined),
@@ -425,9 +420,15 @@ export default function UserManagementClient() {
       setValue('role', undefined); 
       setValue('isBlocked', false);
       setValue('organizerType', undefined); 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating user:", error);
-      toast({ title: "Error", description: "No se pudo crear el usuario.", variant: "destructive" });
+      if (error.message.includes("El nombre de usuario ya existe")) {
+        toast({ title: "Error de Duplicado", description: "El nombre de usuario ya está en uso.", variant: "destructive" });
+      } else if (error.message.includes("El correo electrónico ya está en uso")) {
+        toast({ title: "Error de Duplicado", description: "El correo electrónico ya está registrado.", variant: "destructive" });
+      } else {
+        toast({ title: "Error", description: "No se pudo crear el usuario.", variant: "destructive" });
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -448,18 +449,8 @@ export default function UserManagementClient() {
     }
 
     const oldUsername = editingUser.username;
-    const newUsername = data.username;
-
+    
     try {
-      if (newUsername.toLowerCase() !== oldUsername.toLowerCase()) {
-        const existingUser = await getUserByUsername(newUsername);
-        if (existingUser && existingUser.id !== data.id) {
-          toast({ title: "Error de Edición", description: "El nuevo nombre de usuario ya está en uso.", variant: "destructive" });
-          setIsEditSubmitting(false);
-          return;
-        }
-      }
-      
       const actualUpdatedFields: string[] = [];
       const userDataToUpdate: Partial<ManagedUser> = { id: data.id };
 
@@ -512,16 +503,20 @@ export default function UserManagementClient() {
         const { id, ...updatePayload } = userDataToUpdate;
         await updateUser(editingUser.id, updatePayload);
         
+        const logDetails: Record<string, any> = {
+          userId: editingUser.id,
+          username: userDataToUpdate.username || oldUsername,
+          changedFields: actualUpdatedFields,
+        };
+        if (oldUsername !== (userDataToUpdate.username || oldUsername)) {
+          logDetails.oldUsername = oldUsername;
+        }
+
         await addActivityLog({
           adminUsername: currentUser.username,
           actionType: 'USER_EDITED',
           targetInfo: `Usuario: ${userDataToUpdate.username || oldUsername}`,
-          details: { 
-            userId: editingUser.id, 
-            username: userDataToUpdate.username || oldUsername,
-            oldUsername: oldUsername !== (userDataToUpdate.username || oldUsername) ? oldUsername : undefined,
-            changedFields: actualUpdatedFields 
-          }
+          details: logDetails,
         });
         toast({ title: "Usuario Actualizado", description: `El usuario "${userDataToUpdate.username || oldUsername}" ha sido actualizado.` });
       } else {
@@ -538,39 +533,42 @@ export default function UserManagementClient() {
       }
       setIsEditDialogOpen(false);
       fetchUsersFromDB(); 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating user:", error);
-      toast({ title: "Error de Edición", description: "No se pudo actualizar el usuario.", variant: "destructive" });
+      if (error.message.includes("El nombre de usuario ya existe")) {
+        toast({ title: "Error de Duplicado", description: "El nombre de usuario ya está en uso.", variant: "destructive" });
+      } else if (error.message.includes("El correo electrónico ya está en uso")) {
+        toast({ title: "Error de Duplicado", description: "El correo electrónico ya está registrado.", variant: "destructive" });
+      } else {
+        toast({ title: "Error de Edición", description: "No se pudo actualizar el usuario.", variant: "destructive" });
+      }
     } finally {
       setIsEditSubmitting(false);
     }
   };
 
-  const handleDeleteUserConfirm = async (userId: string) => {
-    const userToDelete = users.find(u => u.id === userId);
+  const handleDeleteUserConfirm = async () => {
     if (!userToDelete || !currentUser?.username) {
       toast({ title: "Error", description: "No se pudo identificar el usuario a eliminar o el administrador actual.", variant: "destructive" });
+      setUserToDelete(null);
       return;
     }
 
     if (userToDelete.username === 'fundador') {
         toast({ title: "Acción no permitida", description: `El usuario principal 'fundador' no puede ser eliminado.`, variant: "destructive" });
+        setUserToDelete(null);
         return;
     }
 
     try {
-      await deleteUser(userId);
-      await addActivityLog({
-        adminUsername: currentUser.username,
-        actionType: 'USER_DELETED',
-        targetInfo: `Usuario: ${userToDelete.username}`,
-        details: { userId: userToDelete.id, username: userToDelete.username, role: userToDelete.role }
-      });
+      await deleteUser(userToDelete.id, currentUser.username);
       fetchUsersFromDB();
       toast({ title: "Usuario Eliminado", description: `El usuario "${userToDelete.username}" ha sido eliminado.` });
     } catch (error) {
       console.error("Error deleting user:", error);
       toast({ title: "Error", description: "No se pudo eliminar el usuario.", variant: "destructive" });
+    } finally {
+      setUserToDelete(null);
     }
   };
   
@@ -835,28 +833,10 @@ export default function UserManagementClient() {
                       <Edit3 className="h-4 w-4" />
                       <span className="sr-only">Editar</span>
                     </Button>
-                    <AlertDialog>
-                      <AlertDialogTrigger asChild>
-                        <Button variant="destructive" size="icon" disabled={userEntry.username === 'fundador'} className="h-8 w-8" title="Eliminar Usuario">
-                            <Trash2 className="h-4 w-4" />
-                            <span className="sr-only">Eliminar</span>
-                        </Button>
-                      </AlertDialogTrigger>
-                      <AlertDialogContent>
-                        <AlertDialogHeader>
-                          <AlertDialogTitle>¿Estás seguro?</AlertDialogTitle>
-                          <AlertDialogDescription>
-                            Esta acción no se puede deshacer. Esto eliminará permanentemente al usuario <span className="font-bold">{userEntry.username}</span> de Firestore.
-                          </AlertDialogDescription>
-                        </AlertDialogHeader>
-                        <AlertDialogFooter>
-                          <AlertDialogCancel className="text-xs h-8">Cancelar</AlertDialogCancel>
-                          <AlertDialogAction onClick={() => handleDeleteUserConfirm(userEntry.id)} className="bg-destructive hover:bg-destructive/90 text-xs h-8">
-                            Sí, eliminar usuario
-                          </AlertDialogAction>
-                        </AlertDialogFooter>
-                      </AlertDialogContent>
-                    </AlertDialog>
+                    <Button variant="destructive" size="icon" disabled={userEntry.username === 'fundador'} className="h-8 w-8" title="Eliminar Usuario" onClick={() => setUserToDelete(userEntry)}>
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Eliminar</span>
+                    </Button>
                   </div>
                 </Card>
               )})}
@@ -870,6 +850,26 @@ export default function UserManagementClient() {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!userToDelete} onOpenChange={(open) => !open && setUserToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center"><AlertCircle className="mr-2 h-5 w-5 text-destructive"/>¿Estás seguro?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. Esto eliminará permanentemente al usuario <span className="font-bold">{userToDelete?.username}</span>.
+              {userToDelete?.role === 'admin' && (
+                  <span className="font-bold text-destructive block mt-2">¡ADVERTENCIA! Este usuario es un administrador. Todas las rifas creadas por este usuario y sus datos asociados (participaciones, resultados) también serán eliminadas permanentemente.</span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setUserToDelete(null)} className="text-xs h-8">Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteUserConfirm} className="bg-destructive hover:bg-destructive/90 text-xs h-8">
+              Sí, eliminar usuario
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       
       {userToUnlock && (
         <AlertDialog open={!!userToUnlock} onOpenChange={(open) => !open && setUserToUnlock(null)}>
@@ -968,3 +968,6 @@ export default function UserManagementClient() {
     </div>
   );
 }
+
+
+

@@ -49,10 +49,10 @@ export default function NumberSelector({
               className={cn(
                 'p-1 sm:p-1.5 border rounded-md text-xs transition-all duration-200 ease-in-out focus:outline-none focus:ring-2', // Base classes
                 isSold
-                  ? 'bg-red-100 text-red-500 cursor-not-allowed line-through border-red-200 dark:bg-red-900/30 dark:text-red-500/70 dark:border-red-700/30 focus:ring-red-300'
+                  ? 'bg-destructive/10 text-destructive cursor-not-allowed line-through border-destructive/20 dark:bg-destructive/20 dark:text-destructive/70 dark:border-destructive/30 focus:ring-destructive/30'
                   : 'bg-card hover:bg-neutral-100 dark:hover:bg-neutral-700 focus:ring-neutral-400 dark:focus:ring-neutral-500', // Normal available button
                 isSelected 
-                  ? 'bg-red-500 text-white ring-2 ring-red-600 shadow-lg transform scale-105 hover:bg-red-600 focus:ring-red-600' // Selected button with red
+                  ? 'bg-destructive text-destructive-foreground ring-2 ring-destructive/80 shadow-lg transform scale-105 hover:bg-destructive/90 focus:ring-destructive'
                   : ''
               )}
               whileTap={!isSold ? { scale: 0.95 } : {}}
@@ -67,11 +67,9 @@ export default function NumberSelector({
       {selectedNumbers.length > 0 && (
         <div className="mt-2 sm:mt-2.5 p-2 sm:p-2.5 bg-secondary rounded-md shadow">
           <p className="font-medium text-[0.7rem] sm:text-xs">Números seleccionados: {selectedNumbers.map(n => String(n)).join(', ')}</p>
-          <p className="font-semibold text-xs sm:text-sm text-red-600">Total a pagar: ${selectedNumbers.length * pricePerTicket}</p> {/* Changed text-orange-600 to text-red-600 */}
+          <p className="font-semibold text-xs sm:text-sm text-destructive">Total a pagar: ${selectedNumbers.length * pricePerTicket}</p>
         </div>
       )}
     </div>
   );
 }
-
-    

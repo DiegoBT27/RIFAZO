@@ -23,7 +23,7 @@ import {
   DialogFooter,
   DialogClose
 } from '@/components/ui/dialog';
-import { getParticipations, getRaffles, updateParticipation, deleteParticipation as deleteParticipationFromDB, addActivityLog } from '@/lib/firebase/firestoreService';
+import { getParticipations, getRaffles, updateParticipation, deleteParticipation as deleteParticipationFromDB, addActivityLog, getParticipationsByRaffleIds } from '@/lib/firebase/firestoreService';
 
 export default function AdminPaymentManager() {
   const [participations, setParticipations] = useState<Participation[]>([]);
@@ -33,19 +33,12 @@ export default function AdminPaymentManager() {
   const { user: currentUser } = useAuth();
   const [selectedProofUrl, setSelectedProofUrl] = useState<string | null>(null);
   const [isProofDialogOpen, setIsProofDialogOpen] = useState(false);
-  const [buttonsInCooldown, setButtonsInCooldown] = useState<Set<string>>(new Set());
+  
+  const [submittingStates, setSubmittingStates] = useState<Record<string, boolean>>({});
 
-  const startCooldown = useCallback((key: string, duration: number = 2000) => {
-    setButtonsInCooldown(prev => new Set(prev).add(key));
-    setTimeout(() => {
-      setButtonsInCooldown(prev => {
-        const next = new Set(prev);
-        next.delete(key);
-        return next;
-      });
-    }, duration);
-  }, []);
-
+  const setActionSubmitting = (key: string, state: boolean) => {
+    setSubmittingStates(prev => ({ ...prev, [key]: state }));
+  };
 
   const fetchAllDataForAdmin = useCallback(async () => {
     if (!currentUser) {
@@ -54,29 +47,36 @@ export default function AdminPaymentManager() {
     }
     setIsLoading(true);
     try {
-      const [allUserParticipations, loadedRaffles] = await Promise.all([
-        getParticipations(),
-        getRaffles()
-      ]);
+      const loadedRaffles = await getRaffles();
 
       const rafflesMap: Record<string, Raffle> = {};
       loadedRaffles.forEach(r => { rafflesMap[r.id] = r; });
       setAllRafflesMap(rafflesMap);
 
-      let filteredParticipations = allUserParticipations;
-      if (currentUser.role === 'admin' && currentUser.username) {
+      let participationsToProcess: Participation[];
+
+      if (currentUser.role === 'founder') {
+        participationsToProcess = await getParticipations();
+      } else if (currentUser.role === 'admin' && currentUser.username) {
         const adminRaffleIds = loadedRaffles
           .filter(raffle => raffle.creatorUsername === currentUser.username)
           .map(raffle => raffle.id);
-        filteredParticipations = allUserParticipations.filter(p => adminRaffleIds.includes(p.raffleId));
+        
+        if (adminRaffleIds.length > 0) {
+          participationsToProcess = await getParticipationsByRaffleIds(adminRaffleIds);
+        } else {
+          participationsToProcess = [];
+        }
+      } else {
+        participationsToProcess = [];
       }
-
-      filteredParticipations.sort((a, b) => {
+      
+      participationsToProcess.sort((a, b) => {
         if (a.paymentStatus === 'pending' && b.paymentStatus !== 'pending') return -1;
         if (a.paymentStatus !== 'pending' && b.paymentStatus === 'pending') return 1;
         return new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime();
       });
-      setParticipations(filteredParticipations);
+      setParticipations(participationsToProcess);
 
     } catch (error) {
       console.error("Error loading data from Firestore:", error);
@@ -92,9 +92,9 @@ export default function AdminPaymentManager() {
 
   const updateParticipationStatusInDB = async (participation: Participation, newStatus: 'confirmed' | 'rejected') => {
     const actionKey = `${participation.id}_${newStatus}`;
-    if (buttonsInCooldown.has(actionKey) || !currentUser?.username) return;
+    if (submittingStates[actionKey] || !currentUser?.username) return;
 
-    startCooldown(actionKey);
+    setActionSubmitting(actionKey, true);
 
     try {
       const oldStatus = participation.paymentStatus;
@@ -116,19 +116,25 @@ export default function AdminPaymentManager() {
         }
       });
       
-      fetchAllDataForAdmin(); 
+      // Optimistic UI Update
+      setParticipations(prev => 
+        prev.map(p => p.id === participation.id ? { ...p, paymentStatus: newStatus } : p)
+      );
+
       toast({ title: `Pago ${newStatus === 'confirmed' ? 'Confirmado' : 'Rechazado'}`, description: `El estado del pago ha sido actualizado.` });
     } catch (error) {
       console.error("Error updating participation status in Firestore:", error);
       toast({ title: "Error", description: "No se pudo actualizar el estado del pago.", variant: "destructive" });
+    } finally {
+      setActionSubmitting(actionKey, false);
     }
   };
 
   const handleDeleteParticipationConfirm = async (participationId: string) => {
     const deleteKey = `${participationId}_delete`;
-    if (buttonsInCooldown.has(deleteKey) || !currentUser?.username) return;
+    if (submittingStates[deleteKey] || !currentUser?.username) return;
     
-    startCooldown(deleteKey);
+    setActionSubmitting(deleteKey, true);
 
     try {
       const participationToDelete = participations.find(p => p.id === participationId);
@@ -150,11 +156,15 @@ export default function AdminPaymentManager() {
         });
       }
 
-      fetchAllDataForAdmin();
+      // Optimistic UI Update
+      setParticipations(prev => prev.filter(p => p.id !== participationId));
+      
       toast({ title: "Participación Eliminada", description: "El registro de participación ha sido eliminado." });
     } catch (error) {
       console.error("Error deleting participation from Firestore:", error);
       toast({ title: "Error al Eliminar", description: "No se pudo eliminar la participación.", variant: "destructive" });
+    } finally {
+      setActionSubmitting(deleteKey, false);
     }
   };
   
@@ -209,12 +219,12 @@ export default function AdminPaymentManager() {
         <div className="mt-3 md:mt-0 md:ml-4 flex items-center sm:items-start gap-2 flex-shrink-0">
           <Button 
             size="icon" 
-            className="bg-green-600 hover:bg-green-700 text-white h-8 w-8" 
+            className="bg-accent hover:bg-accent/90 text-accent-foreground h-8 w-8" 
             onClick={() => updateParticipationStatusInDB(p, 'confirmed')} 
             title="Confirmar Pago"
-            disabled={buttonsInCooldown.has(confirmKey)}
+            disabled={submittingStates[confirmKey]}
           >
-            {buttonsInCooldown.has(confirmKey) ? <Loader2 className="h-4 w-4 animate-spin"/> : <CheckCircle className="h-4 w-4"/>}
+            {submittingStates[confirmKey] ? <Loader2 className="h-4 w-4 animate-spin"/> : <CheckCircle className="h-4 w-4"/>}
           </Button>
           <Button 
             size="icon" 
@@ -222,14 +232,14 @@ export default function AdminPaymentManager() {
             className="h-8 w-8" 
             onClick={() => updateParticipationStatusInDB(p, 'rejected')} 
             title="Rechazar Pago"
-            disabled={buttonsInCooldown.has(rejectKey)}
+            disabled={submittingStates[rejectKey]}
           >
-            {buttonsInCooldown.has(rejectKey) ? <Loader2 className="h-4 w-4 animate-spin"/> : <XCircle className="h-4 w-4"/>}
+            {submittingStates[rejectKey] ? <Loader2 className="h-4 w-4 animate-spin"/> : <XCircle className="h-4 w-4"/>}
           </Button>
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="outline" size="icon" className="h-8 w-8" title="Eliminar Registro" disabled={buttonsInCooldown.has(deleteKey)}>
-                {buttonsInCooldown.has(deleteKey) ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4"/>}
+              <Button variant="outline" size="icon" className="h-8 w-8" title="Eliminar Registro" disabled={submittingStates[deleteKey]}>
+                {submittingStates[deleteKey] ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4"/>}
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
@@ -244,7 +254,7 @@ export default function AdminPaymentManager() {
                 <AlertDialogAction 
                   onClick={() => handleDeleteParticipationConfirm(p.id)} 
                   className="bg-destructive hover:bg-destructive/90 text-xs h-8"
-                  disabled={buttonsInCooldown.has(deleteKey)}
+                  disabled={submittingStates[deleteKey]}
                 >Sí, Eliminar Registro</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -312,8 +322,8 @@ export default function AdminPaymentManager() {
                       )}
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
-                          <Button variant="outline" size="icon" className="h-7 w-7" title="Eliminar Registro" disabled={buttonsInCooldown.has(deleteKeyProcessed)}>
-                            {buttonsInCooldown.has(deleteKeyProcessed) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5"/>}
+                          <Button variant="outline" size="icon" className="h-7 w-7" title="Eliminar Registro" disabled={submittingStates[deleteKeyProcessed]}>
+                            {submittingStates[deleteKeyProcessed] ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5"/>}
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
@@ -328,7 +338,7 @@ export default function AdminPaymentManager() {
                               <AlertDialogAction 
                                 onClick={() => handleDeleteParticipationConfirm(p.id)} 
                                 className="bg-destructive hover:bg-destructive/90 text-xs h-8"
-                                disabled={buttonsInCooldown.has(deleteKeyProcessed)} 
+                                disabled={submittingStates[deleteKeyProcessed]} 
                               >Sí, Eliminar</AlertDialogAction>
                             </AlertDialogFooter>
                         </AlertDialogContent>
@@ -351,4 +361,3 @@ export default function AdminPaymentManager() {
     </div>
   );
 }
-

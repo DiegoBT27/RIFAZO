@@ -14,10 +14,6 @@ const firebaseConfig = {
   appId: "1:605408145488:web:48873798c45b82779da155"
 };
 
-// Log the config to the console for debugging client-side Firebase initialization
-if (typeof window !== 'undefined') {
-  console.log("[Firebase Config] Initializing Firebase with config:", firebaseConfig);
-}
 
 // Initialize Firebase
 let app;

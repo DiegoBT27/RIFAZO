@@ -23,8 +23,6 @@ import {
 } from '@/components/ui/dialog';
 import { format as formatDateFns } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { getPlanDetails } from '@/lib/config/plans';
-import PlanLimitDialog from '@/components/admin/PlanLimitDialog';
 
 export default function ActivityLogsPage() {
   const { user, isLoggedIn, isLoading: authIsLoading } = useAuth();
@@ -34,46 +32,26 @@ export default function ActivityLogsPage() {
   const [pageIsLoading, setPageIsLoading] = useState(true);
   const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null);
   const [isLogDetailOpen, setIsLogDetailOpen] = useState(false);
-  const [accessDenied, setAccessDenied] = useState(false);
-  const [isPlanLimitDialogOpen, setIsPlanLimitDialogOpen] = useState(false);
-
 
   useEffect(() => {
     if (!authIsLoading) {
       if (!isLoggedIn) {
         router.replace('/login');
-      } else if (user?.role !== 'founder' && user?.role !== 'admin') {
-        router.replace('/');
-      } else if (user.role === 'admin') {
-        const planDetails = getPlanDetails(user.planActive ? user.plan : null);
-        if (!planDetails.includesActivityLog) {
-            setAccessDenied(true);
-            setIsPlanLimitDialogOpen(true); // Trigger dialog if plan doesn't include this
-        }
+      } else if (user?.role !== 'founder') {
+        router.replace('/admin');
       }
     }
   }, [isLoggedIn, user, authIsLoading, router]);
 
   const fetchLogs = useCallback(async () => {
-    if (!isLoggedIn || !user || (user.role !== 'founder' && user.role !== 'admin')) {
+    if (!isLoggedIn || user?.role !== 'founder') {
       setPageIsLoading(false);
       return;
-    }
-    if (user.role === 'admin') {
-        const planDetails = getPlanDetails(user.planActive ? user.plan : null);
-        if (!planDetails.includesActivityLog) {
-            setLogs([]);
-            setPageIsLoading(false);
-            // Access denied is handled by useEffect, which also sets isPlanLimitDialogOpen
-            return;
-        }
     }
 
     setPageIsLoading(true);
     try {
-      const loadedLogs = user.role === 'founder' 
-        ? await getActivityLogs(100) 
-        : await getActivityLogs(100, user.username); // Pass username if admin
+      const loadedLogs = await getActivityLogs(100);
       setLogs(loadedLogs);
     } catch (error) {
       console.error("[ActivityLogsPage] Error loading logs:", error);
@@ -85,11 +63,10 @@ export default function ActivityLogsPage() {
   }, [isLoggedIn, user, toast]);
 
   useEffect(() => {
-    // Fetch logs only if not access denied and user is authenticated and has correct role
-    if (!authIsLoading && isLoggedIn && (user?.role === 'founder' || (user?.role === 'admin' && !accessDenied))) {
+    if (!authIsLoading && isLoggedIn && user?.role === 'founder') {
       fetchLogs();
     }
-  }, [authIsLoading, isLoggedIn, user, fetchLogs, accessDenied]);
+  }, [authIsLoading, isLoggedIn, user, fetchLogs]);
 
   const formatActionType = (actionType: ActivityLogActionType | undefined | null): string => {
     if (!actionType) return 'Acción Desconocida';
@@ -105,6 +82,7 @@ export default function ActivityLogsPage() {
       USER_DELETED: 'Eliminación de Usuario',
       USER_BLOCKED: 'Bloqueo de Usuario',
       USER_UNBLOCKED: 'Desbloqueo de Usuario',
+      USER_ACCOUNT_UNLOCKED: 'Desbloqueo de Cuenta de Usuario',
       WINNER_REGISTERED: 'Registro de Ganador',
       ADMIN_LOGIN: 'Inicio de Sesión Admin',
       ADMIN_LOGOUT: 'Cierre de Sesión Admin',
@@ -229,27 +207,7 @@ export default function ActivityLogsPage() {
     );
   }
 
-  if (accessDenied) {
-     return (
-        <>
-            <PlanLimitDialog
-                isOpen={isPlanLimitDialogOpen}
-                onOpenChange={(isOpen) => {
-                    setIsPlanLimitDialogOpen(isOpen);
-                    if (!isOpen) router.replace('/admin'); 
-                }}
-                featureName="ver los registros de actividad"
-            />
-            {/* Optionally render a minimal background or message if needed */}
-            <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)] opacity-50">
-                <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
-                <p className="text-destructive font-semibold">Acceso Denegado por Plan</p>
-            </div>
-        </>
-     );
-  }
-
-  if (!isLoggedIn || (user?.role !== 'founder' && user?.role !== 'admin')) {
+  if (!isLoggedIn || user?.role !== 'founder') {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
         <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
@@ -268,10 +226,9 @@ export default function ActivityLogsPage() {
       {logs.length > 0 ? (
         <Card className="shadow-lg">
           <CardHeader>
-            <CardTitle className="text-lg">Últimas Actividades</CardTitle>
+            <CardTitle className="text-lg">Últimas Actividades (Solo Fundador)</CardTitle>
             <CardDescription>
-              Se muestran los últimos 100 registros. Haz clic en "Ver Detalles" para más información.
-              {user?.role === 'admin' && " (Solo tus acciones)"}
+              Se muestran los últimos 100 registros de toda la plataforma. Haz clic en "Ver Detalles" para más información.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -418,15 +375,6 @@ export default function ActivityLogsPage() {
           </DialogContent>
         </Dialog>
       )}
-       <PlanLimitDialog
-            isOpen={isPlanLimitDialogOpen && accessDenied}
-            onOpenChange={(isOpen) => {
-                setIsPlanLimitDialogOpen(isOpen);
-                if (!isOpen && accessDenied) router.replace('/admin'); // Redirect if dialog closed & still denied
-            }}
-            featureName="ver los registros de actividad"
-        />
     </div>
   );
 }
-    

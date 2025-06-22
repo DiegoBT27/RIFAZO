@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -6,8 +7,8 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import SectionTitle from '@/components/shared/SectionTitle';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import type { RaffleResult } from '@/types';
-import { Award, CalendarDays, Ticket as TicketIcon, Gift, Loader2, ListChecks, Phone as PhoneIcon, UserCircle } from 'lucide-react';
+import type { RaffleResult, Prize } from '@/types';
+import { Award, CalendarDays, Ticket as TicketIcon, Gift, Loader2, ListChecks, Phone as PhoneIcon, UserCircle, Trophy } from 'lucide-react';
 import { getRaffleResults } from '@/lib/firebase/firestoreService'; 
 import { useToast } from '@/hooks/use-toast';
 import { Separator } from '@/components/ui/separator';
@@ -71,50 +72,36 @@ export default function ResultsPage() {
               <Separator className="mx-3 w-auto" />
               <CardContent className="p-3 space-y-2">
                 
-                <div className="flex items-center p-2 border rounded-md bg-primary/5 border-primary/20">
-                  <TicketIcon className="h-4 w-4 mr-2 text-primary flex-shrink-0" />
-                  <div>
-                    <p className="text-[0.65rem] font-medium text-primary leading-tight">Número Ganador:</p>
-                    <p className="text-lg font-bold text-primary leading-tight">{String(result.winningNumber)}</p>
-                  </div>
-                </div>
-
-                <div className="p-2 border rounded-md bg-secondary/10">
-                  <div className="flex items-center">
-                    <ListChecks className="h-3.5 w-3.5 mr-1.5 text-accent/80 flex-shrink-0" />
-                    <div>
-                      <p className="text-[0.65rem] font-medium text-foreground leading-tight">Premio Otorgado:</p>
-                      <p className="text-xs font-semibold text-foreground leading-tight">{result.prize}</p>
+                {Array.isArray(result.prizes) && result.prizes.map((prize: Prize, index: number) => (
+                  <div key={index} className="p-2 border rounded-md bg-primary/5 border-primary/20">
+                    <h4 className="text-[0.65rem] font-medium text-primary leading-tight flex items-center mb-0.5">
+                       <Trophy className="h-3 w-3 mr-1"/> Premio {index + 1}: {prize.description}
+                    </h4>
+                    <div className='flex items-center gap-2'>
+                      <div className="flex items-center flex-1">
+                          <TicketIcon className="h-4 w-4 mr-1.5 text-primary flex-shrink-0" />
+                          <p className="text-lg font-bold text-primary leading-tight">{result.winningNumbers?.[index] || 'N/A'}</p>
+                      </div>
+                      <div className='flex-1 text-xs space-y-0.5'>
+                        {result.winnerNames?.[index] && (
+                           <p className="flex items-center text-foreground leading-tight">
+                            <UserCircle className="h-3 w-3 mr-1 text-muted-foreground" />
+                            {result.winnerNames?.[index]}
+                          </p>
+                        )}
+                        {result.winnerPhones?.[index] && (
+                          <p className="flex items-center text-foreground leading-tight">
+                            <PhoneIcon className="h-3 w-3 mr-1 text-muted-foreground" />
+                            {result.winnerPhones?.[index]}
+                          </p>
+                        )}
+                        {!result.winnerNames?.[index] && !result.winnerPhones?.[index] && (
+                          <p className="text-muted-foreground italic leading-tight">Ganador no registrado</p>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-
-                { (result.winnerName || result.winnerPhone) && (
-                  <div className="p-2 border rounded-md bg-secondary/10 space-y-1">
-                    <h4 className="text-[0.65rem] font-semibold text-foreground flex items-center leading-tight">
-                      <Award className="h-3.5 w-3.5 mr-1 text-accent/80" />
-                      Detalles del Ganador
-                    </h4>
-                    {result.winnerName && (
-                      <div className="flex items-center text-xs">
-                        <UserCircle className="h-3 w-3 mr-1 text-muted-foreground" />
-                        <p className="text-foreground leading-tight">{result.winnerName}</p>
-                      </div>
-                    )}
-                    {result.winnerPhone && (
-                      <div className="flex items-center text-xs">
-                        <PhoneIcon className="h-3 w-3 mr-1 text-muted-foreground" />
-                        <p className="text-foreground leading-tight">{result.winnerPhone}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {!(result.winnerName || result.winnerPhone) && ( 
-                  <div className="text-center text-[0.65rem] text-muted-foreground p-1.5 bg-muted/10 rounded-md">
-                    Datos del ganador no disponibles.
-                  </div>
-                )}
+                ))}
               </CardContent>
             </Card>
           ))}

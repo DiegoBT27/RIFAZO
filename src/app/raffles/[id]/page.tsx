@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -7,7 +8,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Raffle, ManagedUser } from '@/types';
+import type { Raffle, ManagedUser, Prize } from '@/types';
 import NumberSelector from '@/components/raffles/NumberSelector';
 import SectionTitle from '@/components/shared/SectionTitle';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -183,15 +184,6 @@ Participa en nuestra rifa y gana premios increíbles.
 
   const drawDateObj = new Date(raffle.drawDate + 'T00:00:00-04:00'); // Assuming Venezuela timezone (GMT-4)
   const formattedDrawDate = drawDateObj.toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  let lotteryDisclaimer = "";
-  if (raffle.lotteryName) {
-    lotteryDisclaimer = `El número ganador se determinará según ${raffle.lotteryName}`;
-    if (raffle.drawTime) {
-        lotteryDisclaimer += ` del ${formattedDrawDate} a la(s) ${raffle.drawTime}.`;
-    } else {
-        lotteryDisclaimer += ` del ${formattedDrawDate}.`;
-    }
-  }
   
   const creatorWhatsapp = creatorProfile?.whatsappNumber || FALLBACK_ADMIN_WHATSAPP_NUMBER;
 
@@ -207,7 +199,7 @@ Participa en nuestra rifa y gana premios increíbles.
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-3 sm:p-4 flex flex-col justify-end">
             <div className="flex justify-between items-center">
-              <CardTitle className="font-headline text-md sm:text-lg md:text-xl text-white line-clamp-2 flex-grow mr-2">{raffle.prize}</CardTitle>
+              <CardTitle className="font-headline text-md sm:text-lg md:text-xl text-white line-clamp-2 flex-grow mr-2">{raffle.name}</CardTitle>
               <Button
                 variant="ghost"
                 size="icon"
@@ -223,8 +215,26 @@ Participa en nuestra rifa y gana premios increíbles.
         <CardContent className="p-2 sm:p-2.5 space-y-1.5 sm:space-y-2">
           <CardDescription className="text-xs sm:text-sm text-foreground">
             {raffle.description}
-             {lotteryDisclaimer && <p className="mt-1 text-[0.65rem] sm:text-xs italic text-primary/90">{lotteryDisclaimer}</p>}
           </CardDescription>
+          <Separator className="my-1 sm:my-1.5"/>
+          <div className="space-y-1.5">
+            <h4 className="text-sm font-semibold text-foreground">Premios y Sorteos:</h4>
+            <ul className="list-none space-y-1.5 text-xs pl-2">
+              {(raffle.prizes || []).map((prize, index) => (
+                <li key={index} className="p-2 border rounded-md bg-secondary/30">
+                  <p className="font-medium text-foreground">
+                    <span className="font-bold">{index + 1}º Premio:</span> {prize.description}
+                  </p>
+                  {(prize.lotteryName || prize.drawTime) && (
+                    <div className="text-muted-foreground text-xs mt-0.5 space-y-0.5">
+                      {prize.lotteryName && <p className="flex items-center"><ListChecks className="mr-1.5 h-3.5 w-3.5 text-accent"/> {prize.lotteryName}</p>}
+                      {prize.drawTime && <p className="flex items-center"><Clock className="mr-1.5 h-3.5 w-3.5 text-accent"/> {prize.drawTime}</p>}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
           <Separator className="my-1 sm:my-1.5"/>
           <div className="grid grid-cols-2 gap-x-1.5 gap-y-1 text-[0.7rem] sm:text-xs">
             <div className="flex items-center">
@@ -233,24 +243,12 @@ Participa en nuestra rifa y gana premios increíbles.
             </div>
             <div className="flex items-center">
               <CalendarDays className="mr-1 h-3 w-3 sm:h-3.5 sm:w-3.5 text-accent" />
-              Sorteo: {formattedDrawDate}
+              Fecha Principal: {formattedDrawDate}
             </div>
-            <div className="flex items-center">
+            <div className="flex items-center col-span-2 sm:col-span-1">
               <TicketIcon className="mr-1 h-3 w-3 sm:h-3.5 sm:w-3.5 text-accent" />
               Disponibles: <strong className="ml-1">{availableTickets} / {raffle.totalNumbers}</strong>
             </div>
-             {raffle.lotteryName && (
-              <div className="flex items-center">
-                <ListChecks className="mr-1 h-3 w-3 sm:h-3.5 sm:w-3.5 text-accent" />
-                Método: {raffle.lotteryName}
-              </div>
-            )}
-            {raffle.drawTime && raffle.lotteryName && ( // Only show time if method is also specified
-              <div className="flex items-center col-span-2 sm:col-span-1">
-                <Clock className="mr-1 h-3 w-3 sm:h-3.5 sm:w-3.5 text-accent" />
-                Hora Sorteo: {raffle.drawTime}
-              </div>
-            )}
              {raffle.creatorUsername && (
                 <div className="flex items-center text-xs text-muted-foreground col-span-2">
                   <UserCircle className="mr-1.5 h-3.5 w-3.5" />
@@ -329,13 +327,4 @@ Participa en nuestra rifa y gana premios increíbles.
     </div>
   );
 }
-    
-    
 
-    
-
-    
-
-    
-
-    

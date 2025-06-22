@@ -22,7 +22,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
-import { getRaffles, getParticipations, deleteRaffleAndParticipations, getUsers as getUsersFromDB } from '@/lib/firebase/firestoreService';
+import { getRaffles, getParticipations, deleteRaffleAndParticipations, getUsersByUsernames } from '@/lib/firebase/firestoreService';
 
 const CreateRaffleForm = dynamic(() => import('@/components/admin/CreateRaffleForm'), {
   loading: () => <div className="flex justify-center items-center h-40"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>,
@@ -52,24 +52,41 @@ export default function HomePage() {
   const loadRafflesAndData = useCallback(async () => {
     setPageIsLoading(true);
     try {
-      // Fetch all necessary public data and conditionally user-specific data
-      const rafflesFromDB = await getRaffles();
-      const usersFromDB = await getUsersFromDB(); // For creator profiles, always attempt
+      // Optimized Data Fetching
+      const [rafflesFromDB, participationsFromDB] = await Promise.all([
+        getRaffles(),
+        getParticipations() 
+      ]);
       
-      // Fetch all participations to accurately calculate sold numbers for public view.
-      const participationsFromDB = await getParticipations();
-
+      const creatorUsernames = [...new Set(rafflesFromDB.map(r => r.creatorUsername).filter(Boolean) as string[])];
+      const usersFromDB = creatorUsernames.length > 0 ? await getUsersByUsernames(creatorUsernames) : [];
+      
       const profilesMap: Record<string, ManagedUser> = {};
       usersFromDB.forEach(u => { profilesMap[u.username] = u; });
       setCreatorProfiles(profilesMap);
       
+      // Optimized client-side processing
+      const participationsByRaffle = new Map<string, Set<number>>();
+      for (const p of participationsFromDB) {
+        if (p.paymentStatus !== 'rejected') {
+          if (!participationsByRaffle.has(p.raffleId)) {
+            participationsByRaffle.set(p.raffleId, new Set<number>());
+          }
+          for (const num of p.numbers) {
+            participationsByRaffle.get(p.raffleId)!.add(num);
+          }
+        }
+      }
+
       const rafflesWithDetails = rafflesFromDB.map(raffle => {
-        const participationsForThisRaffle = participationsFromDB
-          .filter(p => p.raffleId === raffle.id && p.paymentStatus !== 'rejected')
-          .flatMap(p => p.numbers);
-        
-        const effectiveSoldNumbers = Array.from(new Set([...(raffle.soldNumbers || []), ...participationsForThisRaffle]));
-        return { ...raffle, effectiveSoldNumbers };
+        const soldSet = new Set(raffle.soldNumbers || []);
+        const participationNumbers = participationsByRaffle.get(raffle.id);
+        if (participationNumbers) {
+          for (const num of participationNumbers) {
+            soldSet.add(num);
+          }
+        }
+        return { ...raffle, effectiveSoldNumbers: Array.from(soldSet) };
       });
       
       setAllRaffles(rafflesWithDetails);
@@ -160,7 +177,7 @@ export default function HomePage() {
         {isLoggedIn && (user?.role === 'admin' || user?.role === 'founder') && (
           <Dialog open={isCreateRaffleDialogOpen} onOpenChange={setIsCreateRaffleDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" size="sm" className="text-xs sm:text-sm h-9 w-full sm:w-auto flex-shrink-0">
+              <Button size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90 text-xs sm:text-sm h-9 w-full sm:w-auto flex-shrink-0">
                 <PlusCircle className="mr-1.5 sm:mr-2 h-4 w-4 sm:h-5 sm:w-5" /> Crear Rifa
               </Button>
             </DialogTrigger>
