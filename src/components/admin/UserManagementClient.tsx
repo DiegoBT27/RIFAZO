@@ -203,7 +203,7 @@ export default function UserManagementClient() {
   const [userToUnlock, setUserToUnlock] = useState<ManagedUser | null>(null);
   const [userToDelete, setUserToDelete] = useState<ManagedUser | null>(null);
   const { toast } = useToast();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, refreshUser } = useAuth();
 
   const { register, handleSubmit, control, reset, setValue, watch, formState: { errors } } = useForm<UserFormValues>({
     resolver: zodResolver(userFormSchema),
@@ -251,7 +251,6 @@ export default function UserManagementClient() {
       const loadedUsers = await getUsers();
       setUsers(loadedUsers.sort((a, b) => a.username.localeCompare(b.username)));
     } catch (error) {
-      console.error("Error loading users from Firestore:", error);
       toast({ title: "Error", description: "No se pudieron cargar los usuarios.", variant: "destructive" });
       setUsers([]);
     } finally {
@@ -421,7 +420,6 @@ export default function UserManagementClient() {
       setValue('isBlocked', false);
       setValue('organizerType', undefined); 
     } catch (error: any) {
-      console.error("Error creating user:", error);
       if (error.message.includes("El nombre de usuario ya existe")) {
         toast({ title: "Error de Duplicado", description: "El nombre de usuario ya está en uso.", variant: "destructive" });
       } else if (error.message.includes("El correo electrónico ya está en uso")) {
@@ -483,10 +481,19 @@ export default function UserManagementClient() {
       });
       
       if (userDataToUpdate.role === 'user') {
-        userDataToUpdate.organizerType = undefined;
-        userDataToUpdate.fullName = undefined;
-        userDataToUpdate.companyName = undefined;
-        userDataToUpdate.rif = undefined;
+        userDataToUpdate.organizerType = null;
+        userDataToUpdate.fullName = null;
+        userDataToUpdate.companyName = null;
+        userDataToUpdate.rif = null;
+        userDataToUpdate.publicAlias = null;
+        userDataToUpdate.whatsappNumber = null;
+        userDataToUpdate.locationState = null;
+        userDataToUpdate.locationCity = null;
+        userDataToUpdate.email = null; 
+        userDataToUpdate.bio = null;
+        userDataToUpdate.adminPaymentMethodsInfo = null;
+        userDataToUpdate.averageRating = 0;
+        userDataToUpdate.ratingCount = 0;
       } else if (userDataToUpdate.organizerType === 'individual') {
         userDataToUpdate.companyName = undefined;
         userDataToUpdate.rif = undefined;
@@ -518,23 +525,22 @@ export default function UserManagementClient() {
           targetInfo: `Usuario: ${userDataToUpdate.username || oldUsername}`,
           details: logDetails,
         });
-        toast({ title: "Usuario Actualizado", description: `El usuario "${userDataToUpdate.username || oldUsername}" ha sido actualizado.` });
+        
+        if (currentUser && currentUser.id === editingUser.id) {
+          // This was a self-edit, we must refresh the AuthContext state
+          await refreshUser();
+          toast({ title: "Tu Perfil Ha Sido Actualizado", description: "Tus datos de sesión han sido actualizados." });
+        } else {
+          toast({ title: "Usuario Actualizado", description: `El usuario "${userDataToUpdate.username || oldUsername}" ha sido actualizado.` });
+        }
+
       } else {
         toast({ title: "Sin Cambios", description: "No se detectaron cambios en los datos del usuario." });
       }
 
-
-      if (currentUser && currentUser.username === oldUsername && oldUsername !== (userDataToUpdate.username || oldUsername)) {
-        toast({
-          title: "Nombre de usuario cambiado",
-          description: "Para que los cambios se reflejen completamente en tu sesión, por favor cierra sesión y vuelve a iniciarla.",
-          duration: 7000,
-        });
-      }
       setIsEditDialogOpen(false);
       fetchUsersFromDB(); 
     } catch (error: any) {
-      console.error("Error updating user:", error);
       if (error.message.includes("El nombre de usuario ya existe")) {
         toast({ title: "Error de Duplicado", description: "El nombre de usuario ya está en uso.", variant: "destructive" });
       } else if (error.message.includes("El correo electrónico ya está en uso")) {
@@ -565,7 +571,6 @@ export default function UserManagementClient() {
       fetchUsersFromDB();
       toast({ title: "Usuario Eliminado", description: `El usuario "${userToDelete.username}" ha sido eliminado.` });
     } catch (error) {
-      console.error("Error deleting user:", error);
       toast({ title: "Error", description: "No se pudo eliminar el usuario.", variant: "destructive" });
     } finally {
       setUserToDelete(null);
@@ -596,7 +601,6 @@ export default function UserManagementClient() {
         description: `El usuario "${userToToggle.username}" ha sido ${newBlockedState ? 'bloqueado' : 'desbloqueado'}.`
       });
     } catch (error) {
-      console.error("Error toggling user block state:", error);
       toast({ title: "Error", description: "No se pudo cambiar el estado de bloqueo del usuario.", variant: "destructive" });
     }
   };
@@ -856,9 +860,9 @@ export default function UserManagementClient() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center"><AlertCircle className="mr-2 h-5 w-5 text-destructive"/>¿Estás seguro?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción no se puede deshacer. Esto eliminará permanentemente al usuario <span className="font-bold">{userToDelete?.username}</span>.
+              Esta acción no se puede deshacer. Esto eliminará permanentemente al usuario <span className="font-bold">{userToDelete?.username}</span> y todos sus datos asociados (participaciones, calificaciones, etc.).
               {userToDelete?.role === 'admin' && (
-                  <span className="font-bold text-destructive block mt-2">¡ADVERTENCIA! Este usuario es un administrador. Todas las rifas creadas por este usuario y sus datos asociados (participaciones, resultados) también serán eliminadas permanentemente.</span>
+                  <span className="font-bold text-destructive block mt-2">¡ADVERTENCIA! Este usuario es un administrador. Todas las rifas creadas por este usuario y sus datos asociados también serán eliminadas permanentemente.</span>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -968,6 +972,9 @@ export default function UserManagementClient() {
     </div>
   );
 }
+
+
+
 
 
 

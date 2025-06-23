@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import { useState, type ChangeEvent, useEffect } from 'react';
@@ -69,6 +67,9 @@ const createRaffleFormSchema = (planMaxTickets: number | Infinity, planDisplayNa
   pricePerTicket: z.coerce.number().positive({ message: "El precio debe ser un número positivo." }),
   totalNumbers: z.coerce.number().int().min(10, { message: "Debe haber al menos 10 números." }), 
   drawDate: z.date({ required_error: "La fecha del sorteo es obligatoria."}),
+  isScheduled: z.boolean().optional(),
+  publicationDate: z.date().optional(),
+  publicationTime: z.string().optional(),
   selectedPaymentMethodIds: z.array(z.string())
     .min(1, { message: "Debes seleccionar al menos un método de pago." }),
   paymentMethodDetails: z.object({
@@ -79,6 +80,14 @@ const createRaffleFormSchema = (planMaxTickets: number | Infinity, planDisplayNa
     otro_description: z.string().optional(), 
   }).optional(),
 }).superRefine((data, ctx) => {
+  if (data.isScheduled) {
+    if (!data.publicationDate) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "La fecha de publicación es requerida si programas la rifa.", path: ["publicationDate"] });
+    }
+    if (!data.publicationTime) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "La hora de publicación es requerida.", path: ["publicationTime"] });
+    }
+  }
   if (data.selectedPaymentMethodIds.includes('pagoMovil')) {
     if (!data.paymentMethodDetails?.pagoMovil_ci || data.paymentMethodDetails.pagoMovil_ci.trim().length < 5) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Cédula para Pago Móvil es requerida (mín. 5 caracteres).", path: ["paymentMethodDetails.pagoMovil_ci"] });
@@ -126,7 +135,8 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
   const { toast } = useToast();
   const { user: currentUser, refreshUser } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [isDrawCalendarOpen, setIsDrawCalendarOpen] = useState(false);
+  const [isPubCalendarOpen, setIsPubCalendarOpen] = useState(false);
   const [isPlanLimitDialogOpen, setIsPlanLimitDialogOpen] = useState(false);
   const [planLimitDialogMessage, setPlanLimitDialogMessage] = useState("crear más rifas");
   const formPrefix = 'create-';
@@ -151,6 +161,9 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
       pricePerTicket: 1,
       totalNumbers: 100,
       drawDate: tomorrowAtMidnight,
+      isScheduled: false,
+      publicationDate: undefined,
+      publicationTime: undefined,
       selectedPaymentMethodIds: [],
       paymentMethodDetails: {
         pagoMovil_ci: '',
@@ -173,6 +186,7 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
 
 
   const selectedPaymentMethodIds = watch("selectedPaymentMethodIds");
+  const isScheduled = watch("isScheduled");
 
   const handleImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -210,6 +224,17 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
 
     const currentPlanDetails = getPlanDetails(currentUser.planActive ? currentUser.plan : null);
     
+    let publicationDateISO: string | null = null;
+    let status: Raffle['status'] = 'active';
+
+    if (data.isScheduled && data.publicationDate && data.publicationTime) {
+        const [hours, minutes] = data.publicationTime.split(':').map(Number);
+        const pubDate = new Date(data.publicationDate);
+        pubDate.setHours(hours, minutes, 0, 0);
+        publicationDateISO = pubDate.toISOString();
+        status = 'scheduled';
+    }
+    
     const finalImage = data.image || PLACEHOLDER_IMAGE_URL;
 
 
@@ -244,7 +269,7 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
         drawTime: (p.drawTime && p.drawTime !== 'unspecified_time') ? p.drawTime : null,
     }));
 
-    const raffleDataForDb: Omit<Raffle, 'id' | 'soldNumbers' | 'effectiveSoldNumbers'> = {
+    const raffleDataForDb: Omit<Raffle, 'id' | 'soldTicketsCount'> = {
       name: data.name,
       description: data.description,
       image: finalImage,
@@ -252,6 +277,8 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
       pricePerTicket: data.pricePerTicket,
       totalNumbers: data.totalNumbers,
       drawDate: format(data.drawDate, 'yyyy-MM-dd'),
+      publicationDate: publicationDateISO,
+      status: status,
       acceptedPaymentMethods: acceptedPaymentMethods,
       creatorUsername: currentUser.username,
     };
@@ -506,11 +533,11 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
             name="drawDate"
             control={control}
             render={({ field }) => (
-              <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+              <Popover open={isDrawCalendarOpen} onOpenChange={setIsDrawCalendarOpen}>
                 <PopoverTrigger asChild id={`${formPrefix}drawDate-trigger`}>
                   <Button
                     variant={"outline"}
-                    onClick={() => setIsCalendarOpen(true)}
+                    onClick={() => setIsDrawCalendarOpen(true)}
                     className={cn("w-full justify-start text-left font-normal h-9 text-xs sm:text-sm", !field.value && "text-muted-foreground")}
                   >
                     <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
@@ -523,17 +550,97 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
                     selected={field.value}
                     onSelect={(date) => {
                         field.onChange(date);
-                        setIsCalendarOpen(false);
+                        setIsDrawCalendarOpen(false);
                     }}
                     initialFocus
                     locale={es}
-                    disabled={currentUser?.role === 'founder' ? undefined : (date) => date < todayAtMidnight}
+                    disabled={(date) => date < todayAtMidnight}
                   />
                 </PopoverContent>
               </Popover>
             )}
           />
           {errors.drawDate && <p className="text-xs text-destructive mt-1">{errors.drawDate.message}</p>}
+        </div>
+
+        <Separator />
+
+        <div className="space-y-2">
+            <div className="flex items-center space-x-2">
+                <Controller
+                    name="isScheduled"
+                    control={control}
+                    render={({ field }) => (
+                        <Checkbox
+                        id={`${formPrefix}isScheduled`}
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        />
+                    )}
+                />
+                <Label htmlFor={`${formPrefix}isScheduled`} className="text-xs sm:text-sm font-medium cursor-pointer">Programar Publicación de la Rifa</Label>
+            </div>
+            {isScheduled && (
+                <div className="p-3 border rounded-lg space-y-3 bg-muted/30">
+                    <p className="text-xs text-muted-foreground">La rifa será visible para el público en la fecha y hora que selecciones.</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                         <div>
+                            <Label htmlFor={`${formPrefix}publicationDate-trigger`} className="text-xs">Fecha de Publicación</Label>
+                            <Controller
+                                name="publicationDate"
+                                control={control}
+                                render={({ field }) => (
+                                <Popover open={isPubCalendarOpen} onOpenChange={setIsPubCalendarOpen}>
+                                    <PopoverTrigger asChild id={`${formPrefix}publicationDate-trigger`}>
+                                    <Button
+                                        variant={"outline"}
+                                        className={cn("w-full justify-start text-left font-normal h-9 text-xs", !field.value && "text-muted-foreground")}
+                                    >
+                                        <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
+                                        {field.value ? format(field.value, "PPP", { locale: es }) : <span>Selecciona fecha</span>}
+                                    </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0">
+                                    <Calendar
+                                        mode="single"
+                                        selected={field.value}
+                                        onSelect={(date) => {
+                                            field.onChange(date);
+                                            setIsPubCalendarOpen(false);
+                                        }}
+                                        initialFocus
+                                        locale={es}
+                                        disabled={(date) => date < todayAtMidnight}
+                                    />
+                                    </PopoverContent>
+                                </Popover>
+                                )}
+                            />
+                            {errors.publicationDate && <p className="text-xs text-destructive mt-1">{errors.publicationDate.message}</p>}
+                        </div>
+                        <div>
+                             <Label htmlFor={`${formPrefix}publicationTime`} className="text-xs">Hora de Publicación</Label>
+                             <Controller
+                                name="publicationTime"
+                                control={control}
+                                render={({ field }) => (
+                                    <Select onValueChange={field.onChange} value={field.value}>
+                                    <SelectTrigger id={`${formPrefix}publicationTime`} className="h-9 text-xs">
+                                        <SelectValue placeholder="Selecciona hora" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, '0')}:00`).map(time => (
+                                            <SelectItem key={time} value={time} className="text-xs">{time}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                    </Select>
+                                )}
+                                />
+                             {errors.publicationTime && <p className="text-xs text-destructive mt-1">{errors.publicationTime.message}</p>}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
 
         <Separator className="my-3 sm:my-4" />

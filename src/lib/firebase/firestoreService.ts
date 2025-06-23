@@ -183,6 +183,50 @@ export const updateUser = async (userId: string, userData: Partial<ManagedUser>)
       }
   }
 
+  // --- START: INTELLIGENT ROLE CHANGE LOGIC ---
+  const isBeingPromoted = oldUserData.role === 'user' && (userData.role === 'admin' || userData.role === 'founder');
+  const isBeingDemoted = oldUserData.role !== 'user' && userData.role === 'user';
+
+
+  if (isBeingPromoted) {
+    const freePlanDetails = PLAN_CONFIG['free'];
+    const startDate = new Date();
+    const endDate = new Date(startDate);
+    endDate.setDate(startDate.getDate() + freePlanDetails.durationDays);
+
+    userData.plan = 'free';
+    userData.planActive = true;
+    userData.planStartDate = startDate.toISOString();
+    userData.planEndDate = endDate.toISOString();
+    userData.planAssignedBy = 'system_upgrade';
+    userData.rafflesCreatedThisPeriod = 0;
+  } else if (isBeingDemoted) {
+    // Clear plan data
+    userData.plan = null;
+    userData.planActive = false;
+    userData.planStartDate = null;
+    userData.planEndDate = null;
+    userData.planAssignedBy = null;
+    userData.rafflesCreatedThisPeriod = 0;
+
+    // Clear organizer profile data to maintain data integrity
+    userData.organizerType = null;
+    userData.fullName = null;
+    userData.companyName = null;
+    userData.rif = null;
+    userData.publicAlias = null;
+    userData.whatsappNumber = null;
+    userData.locationState = null;
+    userData.locationCity = null;
+    userData.email = null; 
+    userData.bio = null;
+    userData.adminPaymentMethodsInfo = null;
+    userData.averageRating = 0;
+    userData.ratingCount = 0;
+  }
+  // --- END: INTELLIGENT ROLE CHANGE LOGIC ---
+
+
   const isRename = userData.username && userData.username !== oldUserData.username;
 
   if (isRename) {
@@ -228,28 +272,54 @@ export const updateUser = async (userId: string, userData: Partial<ManagedUser>)
 
 export const deleteUser = async (userId: string, deleterUsername: string): Promise<void> => {
     const userToDeleteDocRef = doc(db, 'users', userId);
-    const userToDeleteSnap = await getDoc(userToDeleteDocRef);
 
-    if (!userToDeleteSnap.exists()) {
-        throw new Error("User to delete not found.");
-    }
-    const userToDelete = { id: userToDeleteSnap.id, ...userToDeleteSnap.data() } as ManagedUser;
+    await runTransaction(db, async (transaction) => {
+        const userToDeleteSnap = await transaction.get(userToDeleteDocRef);
+        if (!userToDeleteSnap.exists()) {
+            throw new Error("User to delete not found.");
+        }
+        const userToDelete = { id: userToDeleteSnap.id, ...userToDeleteSnap.data() } as ManagedUser;
 
-    const batch = writeBatch(db);
+        const rafflesToUpdate: Record<string, number> = {};
 
-    // If the user is an admin, gather all associated documents for deletion
-    if (userToDelete.role === 'admin' && userToDelete.username) {
-        const rafflesQuery = query(rafflesCollection, where('creatorUsername', '==', userToDelete.username));
-        const rafflesSnapshot = await getDocs(rafflesQuery);
-        const raffleIdsToDelete = rafflesSnapshot.docs.map(d => d.id);
+        // 1. Find all participations by this user to determine which raffles need their counts updated.
+        const participationsQuery = query(participationsCollection, where('participantUsername', '==', userToDelete.username));
+        const participationsSnapshot = await getDocs(participationsQuery);
         
-        if (raffleIdsToDelete.length > 0) {
-            // Delete associated documents in chunks to stay within 'in' query limits
-            const CHUNK_SIZE = 30;
+        participationsSnapshot.forEach(docSnap => {
+            const p = docSnap.data() as Participation;
+            if (p.paymentStatus === 'confirmed') {
+                rafflesToUpdate[p.raffleId] = (rafflesToUpdate[p.raffleId] || 0) + p.numbers.length;
+            }
+            transaction.delete(docSnap.ref); // Delete the participation document
+        });
 
-            for (let i = 0; i < raffleIdsToDelete.length; i += CHUNK_SIZE) {
-                const chunk = raffleIdsToDelete.slice(i, i + CHUNK_SIZE);
-                if (chunk.length > 0) {
+        // 2. Decrement the soldTicketsCount for each affected raffle
+        for (const raffleId in rafflesToUpdate) {
+            const decrementValue = rafflesToUpdate[raffleId];
+            if (decrementValue > 0) {
+                const raffleRef = doc(db, 'raffles', raffleId);
+                transaction.update(raffleRef, { soldTicketsCount: increment(-decrementValue) });
+            }
+        }
+
+        // 3. Delete all ratings submitted by this user
+        const ratingsQuery = query(ratingsCollection, where('raterUsername', '==', userToDelete.username));
+        const ratingsSnapshot = await getDocs(ratingsQuery);
+        ratingsSnapshot.forEach(docSnap => transaction.delete(docSnap.ref));
+
+        // 4. If the user is an admin, delete all their created content
+        if (userToDelete.role === 'admin' || userToDelete.role === 'founder') {
+            const adminRafflesQuery = query(rafflesCollection, where('creatorUsername', '==', userToDelete.username));
+            const adminRafflesSnapshot = await getDocs(adminRafflesQuery);
+            const raffleIdsToDelete = adminRafflesSnapshot.docs.map(d => d.id);
+            
+            if (raffleIdsToDelete.length > 0) {
+                const CHUNK_SIZE = 30; // Firestore 'in' query limit for array-contains-any
+                for (let i = 0; i < raffleIdsToDelete.length; i += CHUNK_SIZE) {
+                    const chunk = raffleIdsToDelete.slice(i, i + CHUNK_SIZE);
+                    if (chunk.length === 0) continue;
+                    
                     const collectionsToClean = [
                         { coll: participationsCollection, field: 'raffleId' },
                         { coll: raffleResultsCollection, field: 'raffleId' },
@@ -259,49 +329,40 @@ export const deleteUser = async (userId: string, deleterUsername: string): Promi
                     for (const { coll, field } of collectionsToClean) {
                         const q = query(coll, where(field, 'in', chunk));
                         const snapshot = await getDocs(q);
-                        snapshot.forEach(doc => batch.delete(doc.ref));
+                        snapshot.forEach(docSnap => transaction.delete(docSnap.ref));
                     }
-                    
-                    // Remove these raffles from users' favorites
+
                     const usersWithFavoriteQuery = query(usersCollection, where('favoriteRaffleIds', 'array-contains-any', chunk));
                     const usersWithFavoriteSnapshot = await getDocs(usersWithFavoriteQuery);
                     usersWithFavoriteSnapshot.forEach(userDoc => {
-                        batch.update(userDoc.ref, { favoriteRaffleIds: arrayRemove(...chunk) });
+                        transaction.update(userDoc.ref, { favoriteRaffleIds: arrayRemove(...chunk) });
                     });
                 }
+                adminRafflesSnapshot.forEach(raffleDoc => transaction.delete(raffleDoc.ref));
             }
-
-            // Log and delete the raffles themselves
-            rafflesSnapshot.forEach(raffleDoc => {
-                const logDocRef = doc(collection(db, 'activityLogs'));
-                batch.set(logDocRef, {
-                    adminUsername: deleterUsername,
-                    actionType: 'RAFFLE_DELETED',
-                    targetInfo: `Rifa ID: ${raffleDoc.id}`,
-                    details: { raffleId: raffleDoc.id, raffleName: raffleDoc.data().name, deletedAsPartOfUserDeletion: userToDelete.username },
-                    timestamp: serverTimestamp()
-                });
-                batch.delete(raffleDoc.ref);
-            });
         }
-    }
+        
+        // 5. Log the user deletion
+        const finalLogDocRef = doc(collection(db, 'activityLogs'));
+        transaction.set(finalLogDocRef, {
+            adminUsername: deleterUsername,
+            actionType: 'USER_DELETED',
+            targetInfo: `Usuario: ${userToDelete.username}`,
+            details: { 
+                userId: userToDelete.id, 
+                username: userToDelete.username, 
+                role: userToDelete.role,
+                participationsDeleted: participationsSnapshot.size,
+                ratingsDeleted: ratingsSnapshot.size
+            },
+            timestamp: serverTimestamp()
+        });
 
-    // Log the user deletion itself
-    const finalLogDocRef = doc(collection(db, 'activityLogs'));
-    batch.set(finalLogDocRef, {
-        adminUsername: deleterUsername,
-        actionType: 'USER_DELETED',
-        targetInfo: `Usuario: ${userToDelete.username}`,
-        details: { userId: userToDelete.id, username: userToDelete.username, role: userToDelete.role },
-        timestamp: serverTimestamp()
+        // 6. Finally, delete the user document itself
+        transaction.delete(userToDeleteDocRef);
     });
-
-    // Finally, delete the user document
-    batch.delete(userToDeleteDocRef);
-    
-    // Commit the entire atomic operation
-    await batch.commit();
 };
+
 
 
 export const assignPlanToAdmin = async (
@@ -311,56 +372,84 @@ export const assignPlanToAdmin = async (
   customStartDate?: Date | string | null
 ): Promise<void> => {
   const adminUserDocRef = doc(db, 'users', adminUserId);
-  const planDetails = PLAN_CONFIG[planName];
 
-  if (!planDetails) {
-    throw new Error(`Plan "${planName}" no encontrado en la configuración.`);
-  }
-
-  let effectiveStartDate: Date;
-  let isScheduled = false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0); 
-
-  if (customStartDate) {
-    effectiveStartDate = new Date(customStartDate);
-    effectiveStartDate.setHours(0, 0, 0, 0); 
-    if (effectiveStartDate > today) {
-      isScheduled = true;
+  await runTransaction(db, async (transaction) => {
+    const adminDoc = await transaction.get(adminUserDocRef);
+    if (!adminDoc.exists()) {
+      throw new Error("Usuario administrador no encontrado para asignarle un plan.");
     }
-  } else {
-    effectiveStartDate = today;
-  }
+    const currentAdminData = adminDoc.data() as ManagedUser;
 
-  const endDate = new Date(effectiveStartDate);
-  endDate.setDate(effectiveStartDate.getDate() + planDetails.durationDays);
-
-  const planData: Partial<ManagedUser> = {
-    plan: planName,
-    planActive: !isScheduled, 
-    planStartDate: effectiveStartDate.toISOString(),
-    planEndDate: endDate.toISOString(),
-    planAssignedBy: assignerUsername,
-    rafflesCreatedThisPeriod: 0, 
-  };
-
-  await updateDoc(adminUserDocRef, planData);
-
-  const adminUserSnap = await getDoc(adminUserDocRef);
-  const adminUsername = adminUserSnap.data()?.username || adminUserId;
-
-  await addActivityLog({
-    adminUsername: assignerUsername,
-    actionType: isScheduled ? 'ADMIN_PLAN_SCHEDULED' : 'ADMIN_PLAN_ASSIGNED',
-    targetInfo: `Admin: ${adminUsername}, Plan: ${planDetails.displayName}`,
-    details: {
-      adminUserId,
-      adminUsername,
-      planName: planDetails.displayName,
-      planStartDate: planData.planStartDate,
-      planEndDate: planData.planEndDate,
-      isScheduled
+    const planDetails = PLAN_CONFIG[planName];
+    if (!planDetails) {
+      throw new Error(`Plan "${planName}" no encontrado en la configuración.`);
     }
+
+    let effectiveStartDate: Date;
+    let isScheduled = false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (customStartDate) {
+      effectiveStartDate = new Date(customStartDate);
+      effectiveStartDate.setHours(0, 0, 0, 0);
+      if (effectiveStartDate > today) {
+        isScheduled = true;
+      }
+    } else {
+      effectiveStartDate = today;
+    }
+
+    const endDate = new Date(effectiveStartDate);
+    endDate.setDate(effectiveStartDate.getDate() + planDetails.durationDays);
+
+    let counterShouldBeReset = false;
+    // Condition 1: Is it a new, different plan?
+    if (currentAdminData.plan !== planName) {
+        counterShouldBeReset = true;
+    } else if (currentAdminData.planEndDate) {
+        // Condition 2: Is it the same plan, but the old one has expired? (This is a renewal)
+        const oldEndDate = new Date(currentAdminData.planEndDate);
+        oldEndDate.setHours(0,0,0,0);
+        if (oldEndDate < today) {
+            counterShouldBeReset = true; // It's a renewal of an expired plan
+        }
+    } else if (!currentAdminData.plan) {
+        // Condition 3: The user had no plan before.
+        counterShouldBeReset = true;
+    }
+
+
+    const planData: Partial<ManagedUser> = {
+      plan: planName,
+      planActive: !isScheduled,
+      planStartDate: effectiveStartDate.toISOString(),
+      planEndDate: endDate.toISOString(),
+      planAssignedBy: assignerUsername,
+    };
+    
+    if (counterShouldBeReset) {
+      planData.rafflesCreatedThisPeriod = 0;
+    }
+
+    transaction.update(adminUserDocRef, planData);
+
+    const logDocRef = doc(collection(db, 'activityLogs'));
+    transaction.set(logDocRef, {
+      adminUsername: assignerUsername,
+      actionType: isScheduled ? 'ADMIN_PLAN_SCHEDULED' : 'ADMIN_PLAN_ASSIGNED',
+      targetInfo: `Admin: ${currentAdminData.username}, Plan: ${planDetails.displayName}`,
+      timestamp: serverTimestamp(),
+      details: {
+        adminUserId,
+        adminUsername: currentAdminData.username,
+        planName: planDetails.displayName,
+        planStartDate: planData.planStartDate,
+        planEndDate: planData.planEndDate,
+        isScheduled,
+        counterWasReset: counterShouldBeReset
+      }
+    });
   });
 };
 
@@ -439,8 +528,28 @@ export const toggleRaffleFavorite = async (userId: string, raffleId: string): Pr
 
 // Raffle Functions
 export const getRaffles = async (): Promise<Raffle[]> => {
+  const batch = writeBatch(db);
+  let hasUpdates = false;
+  const now = new Date();
+
   const snapshot = await getDocs(rafflesCollection);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Raffle));
+  const raffles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Raffle));
+
+  // Lazy publishing logic
+  for (const raffle of raffles) {
+    if (raffle.status === 'scheduled' && raffle.publicationDate && new Date(raffle.publicationDate) <= now) {
+      const raffleDocRef = doc(db, 'raffles', raffle.id);
+      batch.update(raffleDocRef, { status: 'active' });
+      hasUpdates = true;
+      raffle.status = 'active'; // Also update in-memory object
+    }
+  }
+
+  if (hasUpdates) {
+    await batch.commit();
+  }
+
+  return raffles;
 };
 
 export const getRafflesByIds = async (ids: string[]): Promise<Raffle[]> => {
@@ -470,7 +579,7 @@ export const getRaffleById = async (raffleId: string): Promise<Raffle | null> =>
   return null;
 };
 
-export const addRaffle = async (raffleData: Omit<Raffle, 'id' | 'soldNumbers' | 'effectiveSoldNumbers'>, creator: ManagedUser): Promise<Raffle> => {
+export const addRaffle = async (raffleData: Omit<Raffle, 'id' | 'soldTicketsCount'>, creator: ManagedUser): Promise<Raffle> => {
   if (!creator || !creator.id) {
     throw new Error("Información del creador inválida. No se puede crear la rifa.");
   }
@@ -502,7 +611,7 @@ export const addRaffle = async (raffleData: Omit<Raffle, 'id' | 'soldNumbers' | 
     }
 
     // Create the new raffle
-    const newRaffleData = { ...raffleData, soldNumbers: [], status: 'active' as const };
+    const newRaffleData = { ...raffleData, soldTicketsCount: 0 };
     const newRaffleDocRef = doc(collection(db, 'raffles')); // Create a new ref with a unique ID
     transaction.set(newRaffleDocRef, newRaffleData);
     
@@ -539,19 +648,49 @@ export const addRaffle = async (raffleData: Omit<Raffle, 'id' | 'soldNumbers' | 
   });
 };
 
-
 export const updateRaffle = async (raffleId: string, raffleData: Partial<Raffle>, editor?: ManagedUser, updatedFields?: string[]): Promise<void> => {
-  if (!editor || !editor.id) {
-    let errorMessage = "Información del editor inválida para actualizar la rifa.";
-    throw new Error(errorMessage);
+  const raffleDoc = doc(db, 'raffles', raffleId);
+
+  // If no editor is provided, just perform a simple update without logging or validation.
+  // This is used for system-level updates like registering a winner.
+  if (!editor) {
+    await updateDoc(raffleDoc, raffleData);
+    return;
   }
   
-  const raffleDoc = doc(db, 'raffles', raffleId);
+  // If an editor is provided, run the full validation and logging transaction.
+  if (!editor.id) {
+    throw new Error("Información del editor inválida para actualizar la rifa.");
+  }
   const editorDoc = doc(db, 'users', editor.id);
 
+  // Pre-transaction validation for reducing totalNumbers
+  // This check is performed outside the main transaction to allow for a query.
+  // While there's a small race condition window, it's a critical safeguard.
+  const raffleToEditSnapForValidation = await getDoc(raffleDoc);
+  if (!raffleToEditSnapForValidation.exists()) {
+    throw new Error("Rifa no encontrada para editar.");
+  }
+  const raffleToEditForValidation = raffleToEditSnapForValidation.data() as Raffle;
+  
+  if (raffleData.totalNumbers && raffleData.totalNumbers < raffleToEditForValidation.totalNumbers) {
+    const participationsQuery = query(participationsCollection, where('raffleId', '==', raffleId), where('paymentStatus', 'in', ['pending', 'confirmed']));
+    const participationsSnap = await getDocs(participationsQuery);
+    const soldAndPendingTicketsCount = participationsSnap.docs.reduce((count, pDoc) => {
+        const pData = pDoc.data() as Participation;
+        return count + (pData.numbers?.length || 0);
+    }, 0);
+    
+    if (raffleData.totalNumbers < soldAndPendingTicketsCount) {
+      throw new Error(`No se puede reducir el total de números a ${raffleData.totalNumbers}, ya que hay ${soldAndPendingTicketsCount} boletos vendidos (confirmados y pendientes).`);
+    }
+  }
+
   await runTransaction(db, async (transaction) => {
+    // Re-read the raffle doc inside the transaction to ensure we have the latest data
     const raffleToEditSnap = await transaction.get(raffleDoc);
     if (!raffleToEditSnap.exists()) {
+      // This should ideally not happen if the pre-check passed, but it's a safeguard.
       throw new Error("Rifa no encontrada para editar.");
     }
     const raffleToEdit = raffleToEditSnap.data() as Raffle;
@@ -570,7 +709,6 @@ export const updateRaffle = async (raffleId: string, raffleData: Partial<Raffle>
       if (raffleToEdit.creatorUsername !== currentEditorData.username) {
         throw new Error("No tienes permiso para editar esta rifa porque no eres el creador y no eres fundador.");
       }
-      // Server-side validation for plan limits on edit
       if (raffleData.totalNumbers && raffleData.totalNumbers > planDetails.maxTicketsPerRaffle) {
         throw new Error(`El número de boletos (${raffleData.totalNumbers}) excede el límite de tu plan (${planDetails.maxTicketsPerRaffle}).`);
       }
@@ -579,43 +717,59 @@ export const updateRaffle = async (raffleId: string, raffleData: Partial<Raffle>
       }
     }
     
-    // Critical integrity check: cannot reduce totalNumbers below sold count
-    if (raffleData.totalNumbers && raffleData.totalNumbers < raffleToEdit.totalNumbers) {
-      const participationsQuery = query(participationsCollection, where('raffleId', '==', raffleId), where('paymentStatus', 'in', ['pending', 'confirmed']));
-      const participationsSnap = await getDocs(participationsQuery);
-      const soldTickets = participationsSnap.docs.reduce((acc, p) => acc + p.data().numbers.length, 0);
-      if (raffleData.totalNumbers < soldTickets) {
-        throw new Error(`No se puede reducir el total de números a ${raffleData.totalNumbers}, ya que hay ${soldTickets} boletos vendidos (incluyendo confirmados y pendientes).`);
-      }
-    }
-
     transaction.update(raffleDoc, raffleData);
 
-    const logDetails: Record<string, any> = {
-      raffleId: raffleId,
-      raffleName: raffleData.name || raffleToEdit.name,
-    };
     if (updatedFields && updatedFields.length > 0) {
-      logDetails.updatedFields = updatedFields;
-    }
+        const logDetails: Record<string, any> = {
+            raffleId: raffleId,
+            raffleName: raffleData.name || raffleToEdit.name,
+        };
+        if (updatedFields && updatedFields.length > 0) {
+            logDetails.updatedFields = updatedFields;
+        }
 
-    const logDocRef = doc(collection(db, 'activityLogs'));
-    transaction.set(logDocRef, {
-      adminUsername: editor.username,
-      actionType: 'RAFFLE_EDITED',
-      targetInfo: `Rifa: ${raffleData.name || raffleToEdit.name}`,
-      timestamp: serverTimestamp(),
-      details: logDetails,
-    });
+        const logDocRef = doc(collection(db, 'activityLogs'));
+        transaction.set(logDocRef, {
+            adminUsername: editor.username,
+            actionType: 'RAFFLE_EDITED',
+            targetInfo: `Rifa: ${raffleData.name || raffleToEdit.name}`,
+            timestamp: serverTimestamp(),
+            details: logDetails,
+        });
+    }
   });
 };
 
-export const deleteRaffleAndParticipations = async (raffleId: string): Promise<void> => {
+export const deleteRaffleAndParticipations = async (raffleId: string, currentUser: ManagedUser): Promise<void> => {
+  const raffleDocRef = doc(db, 'raffles', raffleId);
+  const raffleDoc = await getDoc(raffleDocRef);
+
+  if (!raffleDoc.exists()) {
+    throw new Error("Raffle not found.");
+  }
+  const raffleData = raffleDoc.data() as Raffle;
+
+  // Business logic validation
+  if (currentUser.role === 'admin') {
+    if (raffleData.creatorUsername !== currentUser.username) {
+      throw new Error("Permission denied: You can only delete your own raffles.");
+    }
+    if (raffleData.status === 'completed') {
+        throw new Error("Permission denied: Admins cannot delete completed raffles.");
+    }
+    const participationsQuery = query(participationsCollection, where('raffleId', '==', raffleId), where('paymentStatus', '==', 'confirmed'));
+    const confirmedParticipations = await getDocs(participationsQuery);
+    if (!confirmedParticipations.empty) {
+      throw new Error("No se puede eliminar una rifa que ya tiene pagos confirmados.");
+    }
+  }
+  // Founder can delete any raffle, no extra checks needed here.
+
+
   const batch = writeBatch(db);
 
   // 1. Delete the raffle document
-  const raffleDoc = doc(db, 'raffles', raffleId);
-  batch.delete(raffleDoc);
+  batch.delete(raffleDocRef);
 
   // 2. Delete all associated participations
   const participationsQuery = query(participationsCollection, where('raffleId', '==', raffleId));
@@ -698,12 +852,50 @@ export const addParticipation = async (participationData: Omit<Participation, 'i
 
 export const updateParticipation = async (participationId: string, participationData: Partial<Participation>): Promise<void> => {
   const participationDocRef = doc(db, 'participations', participationId);
-  await updateDoc(participationDocRef, participationData);
+
+  await runTransaction(db, async (transaction) => {
+    const participationDoc = await transaction.get(participationDocRef);
+    if (!participationDoc.exists()) {
+      throw new Error("Participation not found.");
+    }
+
+    const oldParticipationData = participationDoc.data() as Participation;
+    const oldStatus = oldParticipationData.paymentStatus;
+    const newStatus = participationData.paymentStatus;
+    
+    if (oldStatus !== newStatus) {
+      const raffleDocRef = doc(db, 'raffles', oldParticipationData.raffleId);
+      const ticketCount = oldParticipationData.numbers.length;
+      
+      if (oldStatus !== 'confirmed' && newStatus === 'confirmed') {
+        transaction.update(raffleDocRef, { soldTicketsCount: increment(ticketCount) });
+      } else if (oldStatus === 'confirmed' && newStatus !== 'confirmed') {
+        transaction.update(raffleDocRef, { soldTicketsCount: increment(-ticketCount) });
+      }
+    }
+    
+    transaction.update(participationDocRef, participationData);
+  });
 };
 
 export const deleteParticipation = async (participationId: string): Promise<void> => {
-  const participationDoc = doc(db, 'participations', participationId);
-  await deleteDoc(participationDoc);
+  const participationDocRef = doc(db, 'participations', participationId);
+
+  await runTransaction(db, async (transaction) => {
+    const participationDoc = await transaction.get(participationDocRef);
+    if (!participationDoc.exists()) {
+        return;
+    }
+    const participationData = participationDoc.data() as Participation;
+
+    if (participationData.paymentStatus === 'confirmed') {
+      const raffleDocRef = doc(db, 'raffles', participationData.raffleId);
+      const ticketCount = participationData.numbers.length;
+      transaction.update(raffleDocRef, { soldTicketsCount: increment(-ticketCount) });
+    }
+    
+    transaction.delete(participationDocRef);
+  });
 };
 
 
@@ -737,7 +929,6 @@ export const addActivityLog = async (logData: Omit<ActivityLog, 'id' | 'timestam
       timestamp: serverTimestamp(),
     });
   } catch (error) {
-    console.error("Error adding activity log: ", error);
   }
 };
 
@@ -1003,7 +1194,6 @@ export const importFirestoreCollections = async (
 
     } catch (error: any) {
       const errorMsg = `Error restaurando la colección "${collectionName}": ${error.message}`;
-      console.error(errorMsg, error);
       errors.push(errorMsg);
       summary.push(`Fallo al restaurar "${collectionName}".`);
     }

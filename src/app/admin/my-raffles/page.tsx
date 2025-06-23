@@ -8,9 +8,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import SectionTitle from '@/components/shared/SectionTitle';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, ListChecks, Edit, AlertCircle, Inbox, PackagePlus, Trash2, Trophy, CalendarCheck2, AlertTriangle, Phone } from 'lucide-react';
-import type { Raffle } from '@/types';
-import { getRaffles, deleteRaffleAndParticipations, addActivityLog, getRaffleById } from '@/lib/firebase/firestoreService';
+import { Loader2, ListChecks, Edit, AlertCircle, Inbox, PackagePlus, Trash2, Trophy, CalendarCheck2, AlertTriangle, Phone, Clock } from 'lucide-react';
+import type { Raffle, ManagedUser } from '@/types';
+import { getRaffles, deleteRaffleAndParticipations, addActivityLog } from '@/lib/firebase/firestoreService';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -58,9 +58,10 @@ export default function MyRafflesPage() {
       filteredRaffles.sort((a, b) => {
         const getStatusOrder = (status?: string) => {
           if (status === 'active' || status === 'pending_draw') return 1;
-          if (status === 'completed') return 2;
-          if (status === 'cancelled') return 3;
-          return 4; 
+          if (status === 'scheduled') return 2;
+          if (status === 'completed') return 3;
+          if (status === 'cancelled') return 4;
+          return 5; 
         };
         const statusOrderA = getStatusOrder(a.status);
         const statusOrderB = getStatusOrder(b.status);
@@ -83,29 +84,30 @@ export default function MyRafflesPage() {
     }
   }, [authIsLoading, isLoggedIn, fetchMyRaffles]);
 
-  const handleDeleteRaffleConfirm = async (raffleId: string) => {
-    if (!user?.username) {
+  const handleDeleteRaffleConfirm = async (raffleId: string, raffleName: string) => {
+    if (!user) {
         toast({ title: "Error", description: "No se pudo identificar al usuario.", variant: "destructive" });
         return;
     }
     try {
-      const raffleToDelete = await getRaffleById(raffleId); 
-      await deleteRaffleAndParticipations(raffleId);
+      await deleteRaffleAndParticipations(raffleId, user as ManagedUser);
       
-      if (raffleToDelete) {
-        await addActivityLog({
-            adminUsername: user.username,
-            actionType: 'RAFFLE_DELETED',
-            targetInfo: `Rifa ID: ${raffleId}, Nombre: ${raffleToDelete.name}`,
-            details: { raffleId: raffleId, raffleName: raffleToDelete.name, creatorUsername: raffleToDelete.creatorUsername, prizes: raffleToDelete.prizes }
-        });
-      }
+      await addActivityLog({
+          adminUsername: user.username!,
+          actionType: 'RAFFLE_DELETED',
+          targetInfo: `Rifa ID: ${raffleId}, Nombre: ${raffleName}`,
+          details: { raffleId: raffleId, raffleName: raffleName }
+      });
 
       toast({ title: "Rifa Eliminada", description: "La rifa y todos sus datos asociados han sido eliminados." });
       fetchMyRaffles(); 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error deleting raffle:", error);
-      toast({ title: "Error al Eliminar", description: "No se pudo eliminar la rifa.", variant: "destructive" });
+      if (error.message.includes("pagos confirmados")) {
+         toast({ title: "Acción no permitida", description: "No se puede eliminar una rifa que ya tiene pagos confirmados. Contacta al fundador si necesitas asistencia.", variant: "destructive", duration: 7000 });
+      } else {
+         toast({ title: "Error al Eliminar", description: "No se pudo eliminar la rifa.", variant: "destructive" });
+      }
     }
   };
 
@@ -122,10 +124,13 @@ export default function MyRafflesPage() {
     if (raffle.status === 'completed') {
       return <Badge variant="default" className="bg-green-600 hover:bg-green-700 text-xs">Completada</Badge>;
     }
+     if (raffle.status === 'scheduled') {
+      return <Badge variant="outline" className="border-cyan-500 text-cyan-600 text-xs">Programada</Badge>;
+    }
     if (raffle.status === 'cancelled') {
       return <Badge variant="destructive" className="text-xs">Cancelada</Badge>;
     }
-    if (drawDate < today && (raffle.status === 'active' || raffle.status === 'pending_draw')) { 
+    if (drawDate < today && raffle.status === 'active') { 
       return <Badge variant="secondary" className="bg-yellow-500 text-yellow-900 hover:bg-yellow-500/90 text-xs">Pendiente Sorteo</Badge>;
     }
     if (raffle.status === 'active') {
@@ -180,20 +185,18 @@ export default function MyRafflesPage() {
             today.setHours(0,0,0,0);
             const drawDateHasPassed = drawDateObj < today;
             
-            const canRegisterWinner = (drawDateHasPassed || raffle.status === 'pending_draw') && raffle.status !== 'completed' && raffle.status !== 'cancelled';
+            const canRegisterWinner = drawDateHasPassed && raffle.status !== 'completed' && raffle.status !== 'cancelled';
             
             const isFounder = user?.role === 'founder';
             const isAdminCreator = user?.role === 'admin' && raffle.creatorUsername === user?.username;
-            let canEditThisRaffle = isFounder || isAdminCreator;
-
-            if (raffle.status === 'completed' || raffle.status === 'cancelled') {
-                canEditThisRaffle = false; // Cannot edit completed or cancelled raffles
-            }
+            
+            // Critical Change: Lock editing once the draw date has passed or the raffle is completed/cancelled.
+            const canEditThisRaffle = (isFounder || isAdminCreator) && (raffle.status === 'active' || raffle.status === 'scheduled') && !drawDateHasPassed;
 
 
             const canDeleteRaffle = 
               (user?.role === 'founder') || 
-              (user?.role === 'admin' && raffle.creatorUsername === user?.username && raffle.status !== 'completed' && raffle.status !== 'cancelled');
+              (user?.role === 'admin' && raffle.creatorUsername === user?.username && raffle.status !== 'completed');
 
 
             return (
@@ -212,6 +215,12 @@ export default function MyRafflesPage() {
                         Creador: {raffle.creatorUsername}
                     </CardDescription>
                 )}
+                 {raffle.status === 'scheduled' && raffle.publicationDate && (
+                    <CardDescription className="text-xs text-cyan-600 flex items-center pt-1">
+                      <Clock className="h-3.5 w-3.5 mr-1" />
+                      Se publicará el: {new Date(raffle.publicationDate).toLocaleString('es-VE', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'})}
+                    </CardDescription>
+                  )}
                 {raffle.status === 'completed' && (
                     <div className="text-xs mt-1.5 space-y-0.5">
                         <p className="font-medium text-green-700">
@@ -271,7 +280,7 @@ export default function MyRafflesPage() {
                       </AlertDialogHeader>
                       <AlertDialogFooter>
                         <AlertDialogCancel className="text-xs h-8">Cancelar</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => handleDeleteRaffleConfirm(raffle.id)} className="bg-destructive hover:bg-destructive/90 text-xs h-8">
+                        <AlertDialogAction onClick={() => handleDeleteRaffleConfirm(raffle.id, raffle.name)} className="bg-destructive hover:bg-destructive/90 text-xs h-8">
                           Sí, Eliminar Permanentemente
                         </AlertDialogAction>
                       </AlertDialogFooter>
@@ -310,3 +319,5 @@ export default function MyRafflesPage() {
     </div>
   );
 }
+
+    

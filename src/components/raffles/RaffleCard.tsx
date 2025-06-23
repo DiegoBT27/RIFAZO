@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import Link from 'next/link';
@@ -34,7 +35,7 @@ interface RaffleCardProps {
 const RaffleCard = React.memo(function RaffleCard({ raffle, currentUser, onDeleteRaffle, creatorProfile, onViewProfile }: RaffleCardProps) {
   const { toast } = useToast();
   const auth = useAuth();
-  const soldCount = raffle.effectiveSoldNumbers ? raffle.effectiveSoldNumbers.length : (raffle.soldNumbers?.length || 0);
+  const soldCount = raffle.soldTicketsCount || 0;
   const availableTickets = raffle.totalNumbers - soldCount;
 
   const canDelete = currentUser && onDeleteRaffle &&
@@ -51,33 +52,46 @@ const RaffleCard = React.memo(function RaffleCard({ raffle, currentUser, onDelet
     event.stopPropagation();
     event.preventDefault();
 
-    const raffleUrl = `${window.location.origin}/raffles/${raffle.id}`;
-    const shareTitle = raffle.name;
-    const shareText = `🎉 ¡No te pierdas esta oportunidad única en RIFAZO!
-Participa en nuestra rifa y gana premios increíbles.
-¡Corre, que los boletos vuelan! 🚀
-👉 ${raffleUrl}`;
+    if (!raffle) return;
 
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: shareTitle,
-          text: shareText,
-          url: raffleUrl,
-        });
-        toast({ title: "Contenido compartido", description: "La rifa ha sido compartida con éxito." });
-      } catch (error: any) {
-        console.error("Error al compartir con Web Share API:", error);
-        if (error.name === 'NotAllowedError') {
-          toast({ title: "Error de Permiso", description: "No se pudo compartir. Revisa los permisos de tu navegador (HTTPS requerido).", variant: "destructive" });
-        } else {
-          toast({ title: "Error al compartir", description: "No se pudo compartir la rifa. Puedes copiar el enlace manualmente.", variant: "destructive" });
-        }
+    const raffleUrl = `${window.location.origin}/raffles/${raffle.id}`;
+    const shareTitle = `¡Participa en la rifa "${raffle.name}" y gana!`;
+    const shareText = `🎉 ¡No te quedes por fuera! Chequea los increíbles premios de la rifa "${raffle.name}" en RIFAZO. ¡Mucha suerte! 🍀`;
+    
+    const shareData: ShareData = {
+      title: shareTitle,
+      text: shareText,
+      url: raffleUrl,
+    };
+
+    try {
+      const response = await fetch(raffle.image);
+      if (!response.ok) throw new Error("Failed to fetch image");
+      
+      const blob = await response.blob();
+      const file = new File([blob], 'rifa.png', { type: blob.type });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        shareData.files = [file];
       }
-    } else {
-      const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
-      window.open(whatsappUrl, '_blank');
-      toast({ title: "Abriendo WhatsApp", description: "Prepara tu mensaje para compartir la rifa." });
+    } catch (e) {
+      console.error("Could not fetch image for sharing, will share text only.", e);
+    }
+    
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+        toast({ title: "¡Rifa compartida!", description: "Gracias por correr la voz." });
+      } else {
+        throw new Error("Web Share API not supported");
+      }
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        console.error("Could not use Web Share API, falling back to WhatsApp.", error);
+        const whatsappText = `${shareText}\n\n👉 ${raffleUrl}`;
+        const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(whatsappText)}`;
+        window.open(whatsappUrl, '_blank');
+      }
     }
   };
 
@@ -126,7 +140,7 @@ Participa en nuestra rifa y gana premios increíbles.
         <div className="space-y-0.5 sm:space-y-1 text-xs">
           <div className="flex items-center">
             <DollarSign className="h-3.5 w-3.5 mr-1.5 text-accent" />
-            Precio: ${raffle.pricePerTicket}
+            Precio: $\${raffle.pricePerTicket}
           </div>
           <div className="flex items-center">
             <CalendarDays className="h-3.5 w-3.5 mr-1.5 text-accent" />

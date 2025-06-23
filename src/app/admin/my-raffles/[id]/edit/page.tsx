@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -52,7 +53,7 @@ export default function EditRafflePage() {
         router.replace('/admin/my-raffles');
       }
     } catch (error) {
-      console.error("[EditRafflePage] Error loading raffle:", error);
+      
       toast({ title: "Error", description: "No se pudo cargar la rifa.", variant: "destructive" });
     } finally {
       setPageIsLoading(false);
@@ -68,7 +69,7 @@ export default function EditRafflePage() {
       } else if (raffleId) { 
         fetchRaffleDetails();
       } else {
-        console.warn("[EditRafflePage] raffleId is undefined. Params object for debugging:", params);
+        
         setPageIsLoading(false);
         toast({ title: "Error de Carga", description: "No se pudo obtener el ID de la rifa para editar.", variant: "destructive" });
         router.replace('/admin/my-raffles');

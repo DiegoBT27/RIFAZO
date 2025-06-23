@@ -64,11 +64,11 @@ export const PLAN_CONFIG: Record<PlanName, PlanDetails> = {
   standard: {
     name: 'standard',
     displayName: 'Estándar',
-    durationDays: 7,
+    durationDays: 15,
     raffleLimit: 10,
     maxTicketsPerRaffle: 100,
     canEditRaffles: true,
-    canDisplayRatingsPublicly: false,
+    canDisplayRatingsPublicly: true,
     includesMultiplePrizes: false,
     includesCustomImage: true,
     includesAdvancedStats: true, 

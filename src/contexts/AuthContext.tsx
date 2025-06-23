@@ -68,7 +68,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             details: { adminUserId: updatedUser.id, adminUsername: updatedUser.username, oldPlan: updatedUser.plan }
           });
         } catch (error) {
-          console.error(`[AuthContext] Failed to update plan status for user '${updatedUser.username}':`, error);
+          
         }
       } else {
         // Check if plan is expiring in 1 day
@@ -114,7 +114,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                     details: { adminUserId: updatedUser.id, adminUsername: updatedUser.username, planName: updatedUser.plan }
                 });
             } catch (error) {
-                console.error(`[AuthContext] Failed to activate scheduled plan for user '${updatedUser.username}':`, error);
+                
             }
         }
       }
@@ -134,7 +134,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           details: { reason: options?.sessionExpired ? 'session_expired' : 'user_initiated' }
         });
       } catch (error) {
-          console.error("[AuthContext] Error during logout operations:", error);
+          
       }
     }
     localStorage.removeItem('currentUser');
@@ -172,7 +172,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           logout();
         }
       } catch (error) {
-        console.error("[AuthContext] Error refreshing user data:", error);
+        
       } finally {
         setIsLoading(false);
       }
@@ -243,7 +243,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           }
         }
       } catch (error) {
-        console.error("[AuthContext] CRITICAL ERROR during initial auth setup or user loading:", error);
+        
         localStorage.removeItem('currentUser');
       } finally {
         setUser(currentUserState);
@@ -316,7 +316,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
       }
     } catch (error) {
-      console.error("[AuthContext] Error during login:", error);
+      
       return { success: false, reason: 'credentials_invalid' };
     }
   };
@@ -338,7 +338,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         logout({ sessionExpired: true });
       }
     }, (error) => {
-      console.error("[AuthContext] Error in real-time listener:", error);
+      
     });
 
     return () => {
@@ -368,7 +368,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const revertedUser = { ...user, favoriteRaffleIds: originalFavorites };
       setUser(revertedUser);
       localStorage.setItem('currentUser', JSON.stringify(revertedUser));
-      console.error("Failed to toggle favorite status in DB:", error);
+      
     }
   };
 

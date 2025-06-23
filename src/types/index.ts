@@ -21,17 +21,17 @@ export interface Raffle {
   description: string;
   image: string;
   drawDate: string; // YYYY-MM-DD format
+  publicationDate?: string | null; // ISO Date string for scheduled publication
   pricePerTicket: number;
   totalNumbers: number;
-  soldNumbers: number[];
+  soldTicketsCount: number;
   prizes: Prize[];
   acceptedPaymentMethods?: AcceptedPaymentMethod[];
   creatorUsername?: string;
-  effectiveSoldNumbers?: number[];
   winningNumbers?: (number | null)[];
   winnerNames?: (string | null)[];
   winnerPhones?: (string | null)[];
-  status?: 'active' | 'pending_draw' | 'completed' | 'cancelled';
+  status: 'active' | 'pending_draw' | 'completed' | 'cancelled' | 'scheduled';
 }
 
 export interface RaffleResult {
@@ -136,7 +136,3 @@ export interface Rating {
   comment?: string; // Optional comment
   createdAt: any; // Firestore ServerTimestamp
 }
-
-
-
-

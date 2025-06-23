@@ -1,8 +1,9 @@
 
+
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useForm, type SubmitHandler, useFieldArray } from 'react-hook-form';
+import { useForm, type SubmitHandler, useFieldArray, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
@@ -19,8 +20,8 @@ import {
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Raffle, RaffleResult, Prize } from '@/types';
-import { Loader2, Trophy, Phone } from 'lucide-react';
+import type { Raffle, RaffleResult, Prize, Participation } from '@/types';
+import { Loader2, Trophy, Phone, CheckCircle, XCircle } from 'lucide-react';
 import { updateRaffle, addRaffleResult, getParticipationsByRaffleId, addActivityLog } from '@/lib/firebase/firestoreService';
 
 const registerWinnerSchema = z.object({
@@ -49,8 +50,10 @@ export default function RegisterWinnerDialog({ raffle, isOpen, onOpenChange, onS
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [confirmedParticipations, setConfirmedParticipations] = useState<Participation[]>([]);
+  const [foundWinners, setFoundWinners] = useState<Record<number, string | null>>({});
 
-  const { control, register, handleSubmit, reset, formState: { errors } } = useForm<RegisterWinnerFormValues>({
+  const { control, register, handleSubmit, reset, watch, formState: { errors } } = useForm<RegisterWinnerFormValues>({
     resolver: zodResolver(registerWinnerSchema),
     defaultValues: {
       winners: raffle.prizes.map(() => ({ winningNumber: undefined, winnerName: '', winnerPhone: '' })),
@@ -64,11 +67,41 @@ export default function RegisterWinnerDialog({ raffle, isOpen, onOpenChange, onS
   
   useEffect(() => {
     if (isOpen) {
+      const fetchParticipations = async () => {
+        try {
+          const parts = await getParticipationsByRaffleId(raffle.id);
+          setConfirmedParticipations(parts.filter(p => p.paymentStatus === 'confirmed'));
+        } catch (error) {
+          setConfirmedParticipations([]);
+        }
+      };
+      
+      fetchParticipations();
       reset({
         winners: raffle.prizes.map(() => ({ winningNumber: undefined, winnerName: '', winnerPhone: '' })),
       });
+      setFoundWinners({});
     }
   }, [isOpen, raffle, reset]);
+
+  const watchedWinners = watch('winners');
+
+  useEffect(() => {
+      const newFoundWinners: Record<number, string | null> = {};
+      if (confirmedParticipations.length > 0) {
+        watchedWinners.forEach((winner, index) => {
+            const num = winner.winningNumber;
+            if (num && num > 0) {
+                const p = confirmedParticipations.find(part => part.numbers.includes(num));
+                newFoundWinners[index] = p ? `${p.participantName || ''} ${p.participantLastName || ''}`.trim() : null;
+            } else {
+                newFoundWinners[index] = undefined; // Use undefined for no input
+            }
+        });
+      }
+      setFoundWinners(newFoundWinners);
+  }, [watchedWinners, confirmedParticipations]);
+
 
   const onSubmit: SubmitHandler<RegisterWinnerFormValues> = async (data) => {
     setIsSubmitting(true);
@@ -95,7 +128,7 @@ export default function RegisterWinnerDialog({ raffle, isOpen, onOpenChange, onS
       const winnerNames: (string | null)[] = [];
       const winnerPhones: (string | null)[] = [];
       
-      const participations = await getParticipationsByRaffleId(raffle.id);
+      const participations = confirmedParticipations;
 
       for (const winnerData of data.winners) {
         let finalWinnerName = winnerData.winnerName;
@@ -128,7 +161,7 @@ export default function RegisterWinnerDialog({ raffle, isOpen, onOpenChange, onS
         winnerPhones,
         status: 'completed',
       };
-      await updateRaffle(raffle.id, raffleUpdateData, currentUser);
+      await updateRaffle(raffle.id, raffleUpdateData);
 
       const resultData: Omit<RaffleResult, 'id'> = {
         raffleId: raffle.id,
@@ -180,7 +213,7 @@ export default function RegisterWinnerDialog({ raffle, isOpen, onOpenChange, onS
         <DialogHeader className="p-6 pb-4 flex-shrink-0 border-b">
           <DialogTitle className="font-headline text-lg">Registrar Ganadores para: {raffle.name}</DialogTitle>
           <DialogDescription>
-            Ingresa el número ganador para cada premio. El nombre y teléfono son opcionales (se intentarán autocompletar).
+            Ingresa el número ganador para cada premio. El sistema verificará si el boleto fue vendido.
           </DialogDescription>
         </DialogHeader>
         
@@ -199,13 +232,28 @@ export default function RegisterWinnerDialog({ raffle, isOpen, onOpenChange, onS
                     disabled={isSubmitting}
                   />
                   {errors.winners?.[index]?.winningNumber && <p className="text-sm text-destructive mt-1">{errors.winners?.[index]?.winningNumber?.message}</p>}
+                   {foundWinners[index] !== undefined && (
+                    <div className="text-xs mt-1.5 flex items-center">
+                        {foundWinners[index] ? (
+                            <>
+                                <CheckCircle className="h-3.5 w-3.5 mr-1 text-green-600"/>
+                                <span className="text-green-700">Boleto vendido a: {foundWinners[index]}</span>
+                            </>
+                        ) : (
+                             <>
+                                <XCircle className="h-3.5 w-3.5 mr-1 text-destructive"/>
+                                <span className="text-destructive">Este boleto no fue vendido o confirmado.</span>
+                            </>
+                        )}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor={`winners.${index}.winnerName`}>Nombre del Ganador (Opcional)</Label>
                   <Input
                     id={`winners.${index}.winnerName`}
                     {...register(`winners.${index}.winnerName`)}
-                    placeholder="Dejar vacío para autocompletar"
+                    placeholder="Nombre del ganador (opcional)"
                     disabled={isSubmitting}
                   />
                   {errors.winners?.[index]?.winnerName && <p className="text-sm text-destructive mt-1">{errors.winners?.[index]?.winnerName?.message}</p>}
@@ -218,7 +266,7 @@ export default function RegisterWinnerDialog({ raffle, isOpen, onOpenChange, onS
                       id={`winners.${index}.winnerPhone`}
                       type="tel"
                       {...register(`winners.${index}.winnerPhone`)}
-                      placeholder="Dejar vacío para autocompletar"
+                      placeholder="Teléfono del ganador (opcional)"
                       disabled={isSubmitting}
                       className="pl-8"
                     />

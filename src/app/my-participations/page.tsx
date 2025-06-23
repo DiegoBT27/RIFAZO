@@ -15,9 +15,9 @@ import {
   Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription,
   DialogFooter, DialogClose,
 } from '@/components/ui/dialog';
-import type { Participation, ManagedUser, Raffle, AcceptedPaymentMethod, Rating, Prize } from '@/types'; // Added Prize
-import { Ticket, CalendarDays, AlertCircle, CheckCircle, Clock, ShoppingBag, Eye, Info, Loader2, UserCircle as UserCircleIcon, MessageSquare, CreditCard, ListChecks, Trophy, Gift, Phone as PhoneIcon, Star as StarIcon, Trash2 } from 'lucide-react'; // Added StarIcon
-import { getParticipationsByUsername, getRafflesByIds, getUsersByUsernames } from '@/lib/firebase/firestoreService';
+import type { Participation, ManagedUser, Raffle, AcceptedPaymentMethod, Rating, Prize, RaffleResult } from '@/types';
+import { Ticket, CalendarDays, AlertCircle, CheckCircle, Clock, ShoppingBag, Eye, Info, Loader2, UserCircle as UserCircleIcon, MessageSquare, CreditCard, ListChecks, Trophy, Gift, Phone as PhoneIcon, Star as StarIcon, Trash2, Archive } from 'lucide-react';
+import { getParticipationsByUsername, getRafflesByIds, getUsersByUsernames, getRaffleResults } from '@/lib/firebase/firestoreService';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -62,6 +62,7 @@ export default function MyParticipationsPage() {
   const { toast } = useToast();
   const [participations, setParticipations] = useState<Participation[]>([]);
   const [rafflesMap, setRafflesMap] = useState<Record<string, Raffle>>({});
+  const [raffleResultsMap, setRaffleResultsMap] = useState<Record<string, RaffleResult>>({});
   const [creatorProfilesMap, setCreatorProfilesMap] = useState<Record<string, ManagedUser>>({});
   const [pageIsLoading, setPageIsLoading] = useState(true);
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
@@ -88,6 +89,7 @@ export default function MyParticipationsPage() {
             setParticipations([]);
             setRafflesMap({});
             setCreatorProfilesMap({});
+            setRaffleResultsMap({});
             setPageIsLoading(false);
             return;
         }
@@ -95,14 +97,19 @@ export default function MyParticipationsPage() {
         const uniqueRaffleIds = [...new Set(loadedParticipations.map(p => p.raffleId))];
         const uniqueCreatorUsernames = [...new Set(loadedParticipations.map(p => p.creatorUsername).filter(Boolean) as string[])];
         
-        const [raffles, creatorProfiles] = await Promise.all([
+        const [raffles, creatorProfiles, allResults] = await Promise.all([
             getRafflesByIds(uniqueRaffleIds),
             getUsersByUsernames(uniqueCreatorUsernames),
+            getRaffleResults(),
         ]);
 
         const currentRafflesMap: Record<string, Raffle> = {};
         raffles.forEach(r => { currentRafflesMap[r.id] = r });
         setRafflesMap(currentRafflesMap);
+
+        const currentResultsMap: Record<string, RaffleResult> = {};
+        allResults.forEach(res => { currentResultsMap[res.raffleId] = res; });
+        setRaffleResultsMap(currentResultsMap);
         
         const profiles: Record<string, ManagedUser> = {};
         creatorProfiles.forEach(p => { profiles[p.username] = p });
@@ -111,7 +118,7 @@ export default function MyParticipationsPage() {
         loadedParticipations.sort((a, b) => new Date(b.purchaseDate).getTime() - new Date(a.purchaseDate).getTime());
         setParticipations(loadedParticipations);
       } catch (error) {
-        console.error("[MyParticipationsPage] Error loading participations or raffle details from Firestore:", error);
+        
         toast({ title: "Error de Carga", description: "No se pudieron cargar tus participaciones.", variant: "destructive" });
         setParticipations([]);
       } finally {
@@ -120,7 +127,7 @@ export default function MyParticipationsPage() {
     } else if (!authIsLoading) {
       setPageIsLoading(false);
     }
-  }, [isLoggedIn, user?.username, authIsLoading, toast, refreshKey]); // Added refreshKey
+  }, [isLoggedIn, user?.username, authIsLoading, toast, refreshKey]);
 
   useEffect(() => {
     fetchMyParticipations();
@@ -137,7 +144,6 @@ export default function MyParticipationsPage() {
   };
 
   const handleRatingSubmitted = () => {
-    // Trigger a re-fetch of participations to update the "userHasRated" status
     setRefreshKey(prev => prev + 1);
   };
 
@@ -201,7 +207,12 @@ ID de Participación: ${participation.id}`;
           {participations.map((participation) => {
             const creatorProfile = participation.creatorUsername ? creatorProfilesMap[participation.creatorUsername] : undefined;
             const participationRaffle = rafflesMap[participation.raffleId];
+            const raffleResult = raffleResultsMap[participation.raffleId];
+
             const isRaffleDeleted = !participationRaffle;
+            const isRaffleArchivedWithResult = isRaffleDeleted && !!raffleResult;
+            
+            const sourceOfTruth = isRaffleArchivedWithResult ? raffleResult : participationRaffle;
 
             const paymentStatusKey = participation.paymentStatus as keyof typeof statusIcons;
             const statusDisplay = statusIcons[paymentStatusKey] || statusIcons.unknown;
@@ -209,12 +220,12 @@ ID de Participación: ${participation.id}`;
             const currentStatusTextForDialog = statusTextForDialog[paymentStatusKey] || statusTextForDialog.unknown;
             const currentStatusVariantForDialog = statusVariantForDialog[paymentStatusKey] || statusVariantForDialog.unknown;
 
-            const isRaffleCompleted = participationRaffle?.status === 'completed';
+            const isRaffleCompleted = sourceOfTruth?.status === 'completed' || isRaffleArchivedWithResult;
             
             let userWinningPrizes: { number: number; prize: Prize }[] = [];
-            if (isRaffleCompleted && participationRaffle?.winningNumbers?.length) {
-              participationRaffle.winningNumbers.forEach((winningNumber, index) => {
-                const prize = (participationRaffle.prizes || [])[index];
+            if (isRaffleCompleted && sourceOfTruth?.winningNumbers?.length) {
+              sourceOfTruth.winningNumbers.forEach((winningNumber, index) => {
+                const prize = (sourceOfTruth.prizes || [])[index];
                 if (winningNumber !== null && prize && participation.numbers.includes(winningNumber)) {
                     userWinningPrizes.push({
                         number: winningNumber,
@@ -224,8 +235,9 @@ ID de Participación: ${participation.id}`;
               });
             }
             const isWinner = userWinningPrizes.length > 0;
-            const allWinningNumbersStr = participationRaffle?.winningNumbers?.filter(n => n !== null).join(', ') || '';
-
+            const allWinningNumbersStr = sourceOfTruth?.winningNumbers?.filter(n => n !== null).join(', ') || '';
+            const raffleName = sourceOfTruth?.name || sourceOfTruth?.raffleName || participation.raffleName;
+            
             const canRate = !isRaffleDeleted &&
                             participation.paymentStatus === 'confirmed' && 
                             isRaffleCompleted && 
@@ -239,26 +251,30 @@ ID de Participación: ${participation.id}`;
                   "shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col justify-between cursor-pointer",
                   isWinner && "border-2 border-green-500 bg-green-500/10",
                   isRaffleCompleted && !isWinner && "border-red-500/30 bg-red-500/10",
-                  isRaffleDeleted && "border-neutral-500/30 bg-neutral-500/10 opacity-70"
+                  isRaffleDeleted && !isRaffleArchivedWithResult && "border-neutral-500/30 bg-neutral-500/10 opacity-70"
                 )}>
                   <CardHeader className="pb-2 sm:pb-3 pt-3 sm:pt-4 px-3 sm:px-4">
                     <div className="flex justify-between items-start">
                       <CardTitle className="font-headline text-base sm:text-lg text-foreground line-clamp-2 flex-grow pr-2">
-                         {isRaffleDeleted ? 'Rifa Eliminada' : (participationRaffle?.name || participation.raffleName)}
+                         {raffleName}
                       </CardTitle>
                       <span title={statusDisplay.title} className={`flex-shrink-0 ${statusDisplay.color}`}>
                         {React.cloneElement(statusDisplay.icon, { className: "h-5 w-5"})}
                       </span>
                     </div>
-                     {isRaffleDeleted ? (
+                     {isRaffleDeleted && !isRaffleArchivedWithResult ? (
                         <Badge variant="destructive" className="mt-1.5 py-1 text-xs sm:text-sm w-fit">
                             <Trash2 className="mr-1.5 h-4 w-4" /> No disponible
                         </Badge>
+                     ) : isRaffleArchivedWithResult ? (
+                         <Badge variant="secondary" className="mt-1.5 py-1 text-xs sm:text-sm w-fit">
+                             <Archive className="mr-1.5 h-4 w-4" /> Finalizada y Archivada
+                         </Badge>
                      ) : isWinner ? (
                       <Badge variant="default" className="mt-1.5 bg-green-600 hover:bg-green-700 text-green-50 py-1 text-xs sm:text-sm w-fit">
                         <Trophy className="mr-1.5 h-4 w-4" /> ¡BOLETO GANADOR!
                       </Badge>
-                    ) : isRaffleCompleted && participationRaffle?.winningNumbers?.length ? (
+                    ) : isRaffleCompleted && (sourceOfTruth?.winningNumbers?.length ?? 0) > 0 ? (
                       <Badge variant="outline" className="mt-1.5 border-red-500/70 text-red-600/90 py-1 text-xs sm:text-sm w-fit">
                         <AlertCircle className="mr-1.5 h-4 w-4" /> Nros. Ganadores: {allWinningNumbersStr}
                       </Badge>
@@ -273,7 +289,7 @@ ID de Participación: ${participation.id}`;
                     {creatorProfile && (
                       <p className="flex items-center"><ShoppingBag className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> De: <span className="font-semibold ml-1">{creatorProfile.publicAlias || creatorProfile.username}</span></p>
                     )}
-                    {isRaffleCompleted && !isRaffleDeleted && (participationRaffle?.winningNumbers?.length ?? 0) > 0 && (
+                    {isRaffleCompleted && (sourceOfTruth?.winningNumbers?.length ?? 0) > 0 && (
                         <div className={cn(
                             "mt-1.5 pt-1.5 border-t border-dashed text-xs",
                             isWinner ? "text-green-700 font-semibold" : "text-muted-foreground"
@@ -315,18 +331,18 @@ ID de Participación: ${participation.id}`;
                       onClick={(e) => { e.stopPropagation(); handleResendWhatsappMessage(participation);}}
                       className="h-8 w-8"
                       title="Contactar Organizador por WhatsApp"
-                      disabled={isRaffleDeleted}
+                      disabled={isRaffleDeleted && !isRaffleArchivedWithResult}
                     >
                       <MessageSquare className="h-4 w-4"/>
                     </Button>
-                     {canRate && participationRaffle.creatorUsername && (
+                     {canRate && sourceOfTruth?.creatorUsername && (
                        <Button
                         variant="default"
                         size="icon"
                         className="h-8 w-8 bg-yellow-500 hover:bg-yellow-600 text-white"
                         onClick={(e) => {
                            e.stopPropagation(); 
-                           handleOpenRatingDialog(participation.raffleId, participationRaffle.name, participationRaffle.creatorUsername!);
+                           handleOpenRatingDialog(participation.raffleId, raffleName, sourceOfTruth.creatorUsername!);
                         }}
                         title="Calificar Organizador"
                       >
@@ -340,14 +356,14 @@ ID de Participación: ${participation.id}`;
                  <DialogHeader>
                     <DialogTitle className="font-headline text-lg">Detalles de tu Boleto</DialogTitle>
                     <DialogDescription>
-                      {isRaffleDeleted
+                      {isRaffleDeleted && !isRaffleArchivedWithResult
                         ? 'Esta rifa ya no está disponible.'
-                        : `Información sobre tu participación en la rifa "${participationRaffle?.name || participation.raffleName}".`
+                        : `Información sobre tu participación en la rifa "${raffleName}".`
                       }
                     </DialogDescription>
                   </DialogHeader>
                   <ScrollArea className="max-h-[60vh] pr-2">
-                  {isRaffleDeleted ? (
+                  {isRaffleDeleted && !isRaffleArchivedWithResult ? (
                     <div className="py-4 text-center">
                         <AlertCircle className="mx-auto h-12 w-12 text-destructive mb-3" />
                         <p className="font-semibold text-destructive">La Rifa ha sido Eliminada</p>
@@ -355,22 +371,22 @@ ID de Participación: ${participation.id}`;
                     </div>
                   ) : (
                     <div className="py-4 space-y-2 text-sm">
-                      <p><strong>Rifa:</strong> {participationRaffle?.name || participation.raffleName}</p>
+                      <p><strong>Rifa:</strong> {raffleName}</p>
                       <p><strong>Números:</strong> {participation.numbers.map(n => String(n)).join(', ')}</p>
                       <p><strong>Fecha de Compra:</strong> {new Date(participation.purchaseDate).toLocaleString('es-VE')}</p>
                       <p><strong>Estado del Pago:</strong> <Badge variant={currentStatusVariantForDialog} className="py-1"> {React.cloneElement(statusIcons[paymentStatusKey]?.icon || statusIcons.unknown.icon, {className:"h-3.5 w-3.5"})} <span className="ml-1">{currentStatusTextForDialog}</span></Badge></p>
                       {creatorProfile && <p><strong>Organizador:</strong> {creatorProfile.publicAlias || creatorProfile.username}</p>}
                       
-                       {participationRaffle?.drawDate && (
+                       {sourceOfTruth?.drawDate && (
                         <p className="flex items-center">
                           <CalendarDays className="mr-1.5 h-4 w-4 text-muted-foreground" />
-                          <strong>Fecha Principal del Sorteo:</strong> <span className="ml-1">{new Date(participationRaffle.drawDate + 'T00:00:00').toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                          <strong>Fecha Principal del Sorteo:</strong> <span className="ml-1">{new Date(sourceOfTruth.drawDate + 'T00:00:00').toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
                         </p>
                       )}
                       
                       {participation.paymentNotes && <p><strong>Notas Adicionales del Comprador:</strong> {participation.paymentNotes}</p>}
 
-                      {isRaffleCompleted && participationRaffle?.winningNumbers?.length && (
+                      {isRaffleCompleted && sourceOfTruth?.winningNumbers?.length && (
                         <div className={cn(
                             "mt-3 p-3 rounded-md border space-y-0.5",
                             isWinner ? "bg-green-500/10 border-green-500" : "bg-red-500/10 border-red-500"
@@ -400,10 +416,10 @@ ID de Participación: ${participation.id}`;
                                     <div className="pt-2">
                                         <p className="text-muted-foreground font-medium text-xs">Resultados Generales:</p>
                                         <ul className="text-muted-foreground text-xs list-decimal list-inside pl-3 space-y-1">
-                                            {(participationRaffle?.prizes || []).map((prize, index) => (
+                                            {(sourceOfTruth?.prizes || []).map((prize, index) => (
                                                 <li key={index}>
-                                                    <strong>{prize.description}:</strong> Nro. {participationRaffle?.winningNumbers?.[index] || 'N/A'}. 
-                                                    Ganador: {participationRaffle?.winnerNames?.[index] || <span className="italic">No registrado</span>}.
+                                                    <strong>{prize.description}:</strong> Nro. {sourceOfTruth?.winningNumbers?.[index] || 'N/A'}. 
+                                                    Ganador: {sourceOfTruth?.winnerNames?.[index] || <span className="italic">No registrado</span>}.
                                                 </li>
                                             ))}
                                         </ul>
@@ -413,38 +429,39 @@ ID de Participación: ${participation.id}`;
                         </div>
                       )}
 
-
-                      <div className="mt-3 border-t pt-3">
-                        <h4 className="font-semibold text-sm text-foreground mb-1.5">Instrucciones de Pago del Organizador:</h4>
-                        {participationRaffle?.acceptedPaymentMethods && participationRaffle.acceptedPaymentMethods.length > 0 && (
-                          <>
-                            <ul className="space-y-1.5 text-xs mb-2">
-                              {participationRaffle.acceptedPaymentMethods.map(pm => (
-                                <li key={pm.id} className="p-2 bg-muted/30 rounded-md border border-muted-foreground/20">
-                                  <p className="font-medium text-foreground flex items-center">
-                                    <CreditCard className="h-4 w-4 mr-1.5 text-primary"/> {pm.name}
-                                  </p>
-                                  {pm.adminProvidedDetails && (
-                                    <p className="text-muted-foreground text-xs mt-0.5 ml-5 whitespace-pre-wrap">{pm.adminProvidedDetails}</p>
-                                  )}
-                                </li>
-                              ))}
-                            </ul>
-                          </>
-                        )}
-                        {creatorProfile?.adminPaymentMethodsInfo && (
-                          <div className="mt-2.5 pt-2.5 border-t border-muted-foreground/20">
-                             <h5 className="font-medium text-xs text-foreground mb-1">Información General de Pago Adicional:</h5>
-                             <p className="text-muted-foreground whitespace-pre-wrap text-xs">{creatorProfile.adminPaymentMethodsInfo}</p>
-                          </div>
-                        )}
-                        <p className="text-muted-foreground italic text-xs mt-2">
-                              Por favor, contacta al organizador ({creatorProfile?.publicAlias || participation.creatorUsername || 'RIFAZO'}) vía WhatsApp para coordinar y confirmar tu pago.
-                        </p>
-                        {(!participationRaffle?.acceptedPaymentMethods || participationRaffle.acceptedPaymentMethods.length === 0) && !creatorProfile?.adminPaymentMethodsInfo && (
-                           <p className="text-muted-foreground italic text-xs mt-2">El organizador no ha especificado métodos de pago ni información general. Contacta directamente para coordinar.</p>
-                        )}
-                      </div>
+                      {!isRaffleArchivedWithResult && participationRaffle && (
+                        <div className="mt-3 border-t pt-3">
+                            <h4 className="font-semibold text-sm text-foreground mb-1.5">Instrucciones de Pago del Organizador:</h4>
+                            {participationRaffle?.acceptedPaymentMethods && participationRaffle.acceptedPaymentMethods.length > 0 && (
+                            <>
+                                <ul className="space-y-1.5 text-xs mb-2">
+                                {participationRaffle.acceptedPaymentMethods.map(pm => (
+                                    <li key={pm.id} className="p-2 bg-muted/30 rounded-md border border-muted-foreground/20">
+                                    <p className="font-medium text-foreground flex items-center">
+                                        <CreditCard className="h-4 w-4 mr-1.5 text-primary"/> {pm.name}
+                                    </p>
+                                    {pm.adminProvidedDetails && (
+                                        <p className="text-muted-foreground text-xs mt-0.5 ml-5 whitespace-pre-wrap">{pm.adminProvidedDetails}</p>
+                                    )}
+                                    </li>
+                                ))}
+                                </ul>
+                            </>
+                            )}
+                            {creatorProfile?.adminPaymentMethodsInfo && (
+                            <div className="mt-2.5 pt-2.5 border-t border-muted-foreground/20">
+                                <h5 className="font-medium text-xs text-foreground mb-1">Información General de Pago Adicional:</h5>
+                                <p className="text-muted-foreground whitespace-pre-wrap text-xs">{creatorProfile.adminPaymentMethodsInfo}</p>
+                            </div>
+                            )}
+                            <p className="text-muted-foreground italic text-xs mt-2">
+                                Por favor, contacta al organizador ({creatorProfile?.publicAlias || participation.creatorUsername || 'RIFAZO'}) vía WhatsApp para coordinar y confirmar tu pago.
+                            </p>
+                            {(!participationRaffle?.acceptedPaymentMethods || participationRaffle.acceptedPaymentMethods.length === 0) && !creatorProfile?.adminPaymentMethodsInfo && (
+                            <p className="text-muted-foreground italic text-xs mt-2">El organizador no ha especificado métodos de pago ni información general. Contacta directamente para coordinar.</p>
+                            )}
+                        </div>
+                      )}
                     </div>
                    )}
                   </ScrollArea>
@@ -487,4 +504,3 @@ ID de Participación: ${participation.id}`;
     </div>
   );
 }
-

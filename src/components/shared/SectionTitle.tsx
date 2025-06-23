@@ -1,4 +1,3 @@
-
 import type { HTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -9,11 +8,10 @@ interface SectionTitleProps extends HTMLAttributes<HTMLHeadingElement> {
 export default function SectionTitle({ children, className, ...props }: SectionTitleProps) {
   return (
     <h1
-      className={cn("text-2xl sm:text-3xl font-headline font-bold text-foreground mb-6", className)}
+      className={cn("text-2xl sm:text-3xl font-bold text-foreground mb-6", className)}
       {...props}
     >
       {children}
     </h1>
   );
 }
-

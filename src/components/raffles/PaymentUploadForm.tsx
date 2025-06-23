@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, type FormEvent, type ChangeEvent } from 'react';
@@ -13,7 +14,7 @@ import { Phone as PhoneIcon } from 'lucide-react';
 import { User } from 'lucide-react';
 import type { Participation, Raffle } from '@/types';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { addParticipation } from '@/lib/firebase/firestoreService';
+import { addParticipation, getUserByUsername, getParticipationsByRaffleId } from '@/lib/firebase/firestoreService';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { buttonVariants } from '../ui/button';
@@ -24,7 +25,6 @@ interface PaymentUploadFormProps {
   selectedNumbers: number[];
   pricePerTicket: number;
   onPaymentSuccess: () => void;
-  creatorWhatsappNumber?: string;
 }
 
 const FALLBACK_ADMIN_WHATSAPP_NUMBER = "584141135956";
@@ -66,7 +66,7 @@ const downloadTicketTextFile = (participation: Participation, raffle: Raffle, to
 };
 
 
-export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTicket, onPaymentSuccess, creatorWhatsappNumber }: PaymentUploadFormProps) {
+export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTicket, onPaymentSuccess }: PaymentUploadFormProps) {
   const [notes, setNotes] = useState('');
   const [participantName, setParticipantName] = useState('');
   const [participantLastName, setParticipantLastName] = useState('');
@@ -92,7 +92,6 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
 
   const selectedNumbersCount = selectedNumbers.length;
   const totalAmount = selectedNumbersCount * pricePerTicket;
-  const finalWhatsappNumber = creatorWhatsappNumber || FALLBACK_ADMIN_WHATSAPP_NUMBER;
 
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -112,6 +111,25 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
     }
 
     try {
+      // --- Just-in-Time Validation ---
+      const latestParticipations = await getParticipationsByRaffleId(raffle.id);
+      const soldAndPendingNumbers = latestParticipations
+          .filter(p => p.paymentStatus !== 'rejected')
+          .flatMap(p => p.numbers);
+      
+      const conflictNumber = selectedNumbers.find(n => soldAndPendingNumbers.includes(n));
+
+      if (conflictNumber) {
+          toast({
+              title: "Número no disponible",
+              description: `El número ${conflictNumber} acaba de ser tomado. Por favor, selecciona otro.`,
+              variant: "destructive",
+          });
+          onPaymentSuccess(); // This will trigger a re-fetch of numbers in the parent
+          setIsSubmitting(false);
+          return;
+      }
+
       const newParticipationData: Omit<Participation, 'id'> = {
         raffleId: raffle.id,
         raffleName: raffle.name,
@@ -138,6 +156,13 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
         description: `Se ha registrado tu participación. Se descargará un archivo con los detalles. A continuación, se abrirá WhatsApp para contactar al organizador: ${raffle.creatorUsername || 'RIFAZO'}.`,
         duration: 8000,
       });
+
+      // Just-in-time fetch for the most current creator profile data
+      let finalWhatsappNumber = FALLBACK_ADMIN_WHATSAPP_NUMBER;
+      if (raffle.creatorUsername) {
+          const creatorProfile = await getUserByUsername(raffle.creatorUsername);
+          finalWhatsappNumber = creatorProfile?.whatsappNumber || FALLBACK_ADMIN_WHATSAPP_NUMBER;
+      }
 
       const whatsappMessage = `🎉 ¡Tu participación ha sido registrada con éxito!
 

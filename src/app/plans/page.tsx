@@ -120,6 +120,12 @@ export default function PlansPage() {
                     })()
                   ) : (isCurrentUserPlan && <div className="h-[22px] mt-1.5" />)}
 
+                  {user && !user.planActive && user.plan === plan.name && user.planEndDate && isPast(new Date(user.planEndDate)) && (
+                    <p className="text-xs text-destructive font-semibold mt-1.5 flex items-center justify-center">
+                        <Clock className="h-3.5 w-3.5 mr-1" />Plan Vencido
+                    </p>
+                  )}
+
                 </CardHeader>
                 <CardContent className="flex-grow space-y-3 pt-0">
                   <div className="flex items-center text-sm text-muted-foreground mb-3">
@@ -156,7 +162,7 @@ export default function PlansPage() {
                     {isCurrentUserPlan && plan.name !== 'free' ? 'Ya tienes este plan' :
                     isCurrentUserPlan && plan.name === 'free' ? 'GRATIS (Tu Plan Actual)' :
                     plan.name === 'free' ? 'GRATIS' :
-                    plan.name === 'standard' ? '2$ Semanal' :
+                    plan.name === 'standard' ? '2.5$ por 15 días' :
                     plan.name === 'pro' ? '5$ por 30 días' :
                     'CONTRATAR'
                     }

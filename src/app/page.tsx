@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -22,7 +23,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
-import { getRaffles, getParticipations, deleteRaffleAndParticipations, getUsersByUsernames } from '@/lib/firebase/firestoreService';
+import { getRaffles, deleteRaffleAndParticipations, getUsersByUsernames } from '@/lib/firebase/firestoreService';
 
 const CreateRaffleForm = dynamic(() => import('@/components/admin/CreateRaffleForm'), {
   loading: () => <div className="flex justify-center items-center h-40"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>,
@@ -52,11 +53,7 @@ export default function HomePage() {
   const loadRafflesAndData = useCallback(async () => {
     setPageIsLoading(true);
     try {
-      // Optimized Data Fetching
-      const [rafflesFromDB, participationsFromDB] = await Promise.all([
-        getRaffles(),
-        getParticipations() 
-      ]);
+      const rafflesFromDB = await getRaffles();
       
       const creatorUsernames = [...new Set(rafflesFromDB.map(r => r.creatorUsername).filter(Boolean) as string[])];
       const usersFromDB = creatorUsernames.length > 0 ? await getUsersByUsernames(creatorUsernames) : [];
@@ -65,31 +62,7 @@ export default function HomePage() {
       usersFromDB.forEach(u => { profilesMap[u.username] = u; });
       setCreatorProfiles(profilesMap);
       
-      // Optimized client-side processing
-      const participationsByRaffle = new Map<string, Set<number>>();
-      for (const p of participationsFromDB) {
-        if (p.paymentStatus !== 'rejected') {
-          if (!participationsByRaffle.has(p.raffleId)) {
-            participationsByRaffle.set(p.raffleId, new Set<number>());
-          }
-          for (const num of p.numbers) {
-            participationsByRaffle.get(p.raffleId)!.add(num);
-          }
-        }
-      }
-
-      const rafflesWithDetails = rafflesFromDB.map(raffle => {
-        const soldSet = new Set(raffle.soldNumbers || []);
-        const participationNumbers = participationsByRaffle.get(raffle.id);
-        if (participationNumbers) {
-          for (const num of participationNumbers) {
-            soldSet.add(num);
-          }
-        }
-        return { ...raffle, effectiveSoldNumbers: Array.from(soldSet) };
-      });
-      
-      setAllRaffles(rafflesWithDetails);
+      setAllRaffles(rafflesFromDB);
     } catch (error) {
       console.error("Error loading data from Firestore:", error);
       toast({ title: "Error", description: "No se pudieron cargar los datos de las rifas.", variant: "destructive" });
@@ -110,21 +83,23 @@ export default function HomePage() {
 
   const handleDeleteRaffle = useCallback(async (raffleId: string) => {
     try {
-      await deleteRaffleAndParticipations(raffleId);
+      // For public page, only currentUser (admin/founder) can delete
+      if (!user) throw new Error("Authentication required.");
+      await deleteRaffleAndParticipations(raffleId, user);
       toast({
         title: "Rifa Eliminada",
         description: "La rifa y sus participaciones asociadas han sido eliminadas de Firestore.",
       });
       setRafflesRefreshKey(prev => prev + 1);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error deleting raffle from Firestore:", error);
       toast({
         title: "Error al Eliminar",
-        description: "No se pudo eliminar la rifa de Firestore.",
+        description: error.message || "No se pudo eliminar la rifa de Firestore.",
         variant: "destructive",
       });
     }
-  }, [toast]);
+  }, [toast, user]);
 
   const handleViewProfile = useCallback((profile: ManagedUser) => {
     setSelectedCreatorProfile(profile);
@@ -152,22 +127,11 @@ export default function HomePage() {
     );
   }
   
-  // 4. Render page content
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // Filter for active raffles for public display
+  const activeRaffles = allRaffles
+    .filter(raffle => raffle.status === 'active')
+    .sort((a, b) => new Date(a.drawDate).getTime() - new Date(b.drawDate).getTime());
 
-  const currentRaffles = allRaffles.filter(raffle => {
-    const dateParts = raffle.drawDate.split('-');
-    if (dateParts.length === 3) {
-      const year = parseInt(dateParts[0], 10);
-      const month = parseInt(dateParts[1], 10) - 1;
-      const day = parseInt(dateParts[2], 10);
-      const drawDate = new Date(year, month, day);
-      drawDate.setHours(0, 0, 0, 0);
-      return drawDate >= today; // Filter only by date
-    }
-    return false;
-  }).sort((a, b) => new Date(a.drawDate).getTime() - new Date(b.drawDate).getTime());
   
   return (
     <div>
@@ -213,9 +177,9 @@ export default function HomePage() {
         </div>
       )}
       
-      {currentRaffles.length > 0 ? (
+      {activeRaffles.length > 0 ? (
         <div className="flex flex-col items-center gap-4 sm:gap-6 md:grid md:grid-cols-2 lg:grid-cols-3">
-          {currentRaffles.map((raffle) => {
+          {activeRaffles.map((raffle) => {
             const creatorProfile = raffle.creatorUsername ? creatorProfiles[raffle.creatorUsername] : undefined;
             return (
               <RaffleCard
@@ -237,7 +201,7 @@ export default function HomePage() {
           </p>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
             {isLoggedIn && (user?.role === 'admin' || user?.role === 'founder')
-              ? '¡Crea una nueva rifa para empezar!'
+              ? '¡Crea o programa una nueva rifa para empezar!'
               : 'Vuelve más tarde para ver nuevas rifas.'}
           </p>
         </div>

@@ -26,8 +26,6 @@ const PaymentUploadForm = dynamic(() => import('@/components/raffles/PaymentUplo
   ssr: false
 });
 
-const FALLBACK_ADMIN_WHATSAPP_NUMBER = "584141135956";
-
 export default function RaffleDetailsPage() {
   const { isLoggedIn, isLoading: authIsLoading, user: currentUser } = useAuth();
   const router = useRouter();
@@ -60,8 +58,7 @@ export default function RaffleDetailsPage() {
           .filter(p => p.paymentStatus !== 'rejected')
           .flatMap(p => p.numbers);
 
-        const initialMockSoldNumbers = foundRaffle.soldNumbers || [];
-        const combinedSoldNumbers = Array.from(new Set([...initialMockSoldNumbers, ...participationsForThisRaffle]));
+        const combinedSoldNumbers = Array.from(new Set([...participationsForThisRaffle]));
         setEffectiveSoldNumbers(combinedSoldNumbers);
 
         if (foundRaffle.creatorUsername) {
@@ -105,7 +102,7 @@ export default function RaffleDetailsPage() {
         const participationsForThisRaffle = participations
             .filter(p => p.paymentStatus !== 'rejected')
             .flatMap(p => p.numbers);
-        const combinedSoldNumbers = Array.from(new Set([...(raffle.soldNumbers || []), ...participationsForThisRaffle]));
+        const combinedSoldNumbers = Array.from(new Set([...participationsForThisRaffle]));
         setEffectiveSoldNumbers(combinedSoldNumbers);
         setSelectedNumbers([]); // Clear selection after successful payment registration
       } catch (error) {
@@ -117,35 +114,47 @@ export default function RaffleDetailsPage() {
   const handleShare = async () => {
     if (!raffle) return;
 
-    const raffleUrl = window.location.href;
-    const shareTitle = raffle.name;
-    const shareText = `🎉 ¡No te pierdas esta oportunidad única en RIFAZO!
-Participa en nuestra rifa y gana premios increíbles.
-¡Corre, que los boletos vuelan! 🚀
-👉 ${raffleUrl}`;
+    const raffleUrl = `${window.location.origin}/raffles/${raffle.id}`;
+    const shareTitle = `¡Participa en la rifa "${raffle.name}" y gana!`;
+    const shareText = `🎉 ¡No te quedes por fuera! Chequea los increíbles premios de la rifa "${raffle.name}" en RIFAZO. ¡Mucha suerte! 🍀`;
 
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: shareTitle,
-          text: shareText,
-          url: raffleUrl,
-        });
-        toast({ title: "Contenido compartido", description: "La rifa ha sido compartida con éxito." });
-      } catch (error: any) {
-        console.error("Error al compartir con Web Share API:", error);
-        if (error.name === 'NotAllowedError') {
-          toast({ title: "Error de Permiso", description: "No se pudo compartir. Revisa los permisos de tu navegador (HTTPS requerido).", variant: "destructive" });
-        } else {
-          toast({ title: "Error al compartir", description: "No se pudo compartir la rifa usando la función nativa. Puedes copiar el enlace manualmente.", variant: "destructive" });
-        }
+    const shareData: ShareData = {
+      title: shareTitle,
+      text: shareText,
+      url: raffleUrl,
+    };
+
+    try {
+      const response = await fetch(raffle.image);
+      if (!response.ok) throw new Error("Failed to fetch image");
+      
+      const blob = await response.blob();
+      const file = new File([blob], 'rifa.png', { type: blob.type });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        shareData.files = [file];
       }
-    } else {
-      const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
-      window.open(whatsappUrl, '_blank');
-      toast({ title: "Abriendo WhatsApp", description: "Prepara tu mensaje para compartir la rifa." });
+    } catch (e) {
+      console.error("Could not fetch image for sharing, will share text only.", e);
+    }
+    
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+        toast({ title: "¡Rifa compartida!", description: "Gracias por correr la voz." });
+      } else {
+        throw new Error("Web Share API not supported");
+      }
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        console.error("Could not use Web Share API, falling back to WhatsApp.", error);
+        const whatsappText = `${shareText}\n\n👉 ${raffleUrl}`;
+        const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(whatsappText)}`;
+        window.open(whatsappUrl, '_blank');
+      }
     }
   };
+
 
   if (authIsLoading) {
     return (
@@ -180,12 +189,11 @@ Participa en nuestra rifa y gana premios increíbles.
     );
   }
 
-  const availableTickets = raffle.totalNumbers - effectiveSoldNumbers.length;
+  const availableTickets = raffle.totalNumbers - (raffle.soldTicketsCount || 0);
 
   const drawDateObj = new Date(raffle.drawDate + 'T00:00:00-04:00'); // Assuming Venezuela timezone (GMT-4)
   const formattedDrawDate = drawDateObj.toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   
-  const creatorWhatsapp = creatorProfile?.whatsappNumber || FALLBACK_ADMIN_WHATSAPP_NUMBER;
 
   return (
     <div className="space-y-3 sm:space-y-4">
@@ -300,7 +308,6 @@ Participa en nuestra rifa y gana premios increíbles.
                          selectedNumbers={selectedNumbers}
                          pricePerTicket={raffle.pricePerTicket}
                          onPaymentSuccess={handlePaymentSuccess}
-                         creatorWhatsappNumber={creatorWhatsapp}
                       />
                     </motion.div>
                   )}
@@ -327,4 +334,3 @@ Participa en nuestra rifa y gana premios increíbles.
     </div>
   );
 }
-
