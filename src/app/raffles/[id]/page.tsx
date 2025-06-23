@@ -154,7 +154,8 @@ export default function RaffleDetailsPage() {
         throw new Error("Web Share API not supported");
       }
     } catch (error: any) {
-      if (error.name !== 'AbortError') {
+      // Silently ignore AbortError and NotAllowedError, which are triggered when the user cancels the share dialog.
+      if (error.name !== 'AbortError' && error.name !== 'NotAllowedError') {
         console.error("Could not use Web Share API, falling back to WhatsApp.", error);
         const whatsappText = newShareText;
         const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(whatsappText)}`;
