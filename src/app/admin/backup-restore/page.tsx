@@ -102,7 +102,7 @@ export default function BackupRestorePage() {
       const link = document.createElement('a');
       const now = new Date();
       const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
-      link.download = `rifapati_backup_${user?.role === 'admin' ? user.username + '_' : ''}${timestamp}.json`;
+      link.download = `rifazo_backup_${user?.role === 'admin' ? user.username + '_' : ''}${timestamp}.json`;
       link.href = url;
       document.body.appendChild(link);
       link.click();

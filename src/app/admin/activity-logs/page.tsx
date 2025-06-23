@@ -179,7 +179,7 @@ export default function ActivityLogsPage() {
     }
     
     content += `\n----------------------------------\n`;
-    content += `Fin del Registro - RifaPaTi`;
+    content += `Fin del Registro - RIFAZO`;
     return content;
   };
 
@@ -189,7 +189,7 @@ export default function ActivityLogsPage() {
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `log_rifapati_${selectedLog.id ? selectedLog.id.substring(0, 8) : 'unknown'}_${selectedLog.timestamp ? new Date(selectedLog.timestamp).toISOString().split('T')[0] : 'nodate'}.txt`;
+    link.download = `log_rifazo_${selectedLog.id ? selectedLog.id.substring(0, 8) : 'unknown'}_${selectedLog.timestamp ? new Date(selectedLog.timestamp).toISOString().split('T')[0] : 'nodate'}.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
