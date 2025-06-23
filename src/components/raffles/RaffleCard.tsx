@@ -55,12 +55,20 @@ const RaffleCard = React.memo(function RaffleCard({ raffle, currentUser, onDelet
     if (!raffle) return;
 
     const raffleUrl = `${window.location.origin}/raffles/${raffle.id}`;
-    const shareTitle = `¡Participa en la rifa "${raffle.name}" y gana!`;
-    const shareText = `🎉 ¡No te quedes por fuera! Chequea los increíbles premios de la rifa "${raffle.name}" en RIFAZO. ¡Mucha suerte! 🍀`;
+    const shareTitle = `¡Participa en la rifa "${raffle.name}"!`;
+    const firstPrize = raffle.prizes?.[0]?.description || "premios increíbles";
+    const drawDate = new Date(raffle.drawDate + 'T00:00:00-04:00').toLocaleDateString('es-VE', { day: 'numeric', month: 'long', year: 'numeric' });
+    const price = raffle.pricePerTicket.toFixed(2);
+    
+    const newShareText = `🎉 ¡Participa ya, Rifa activa!\n` +
+                         `🎁 ${firstPrize}\n` +
+                         `🎫 $${price} | 📅 Sorteo: ${drawDate}\n\n` +
+                         `👉 Participa aquí: ${raffleUrl}\n\n` +
+                         `🔐 Organiza con RIFAZO`;
     
     const shareData: ShareData = {
       title: shareTitle,
-      text: shareText,
+      text: newShareText,
       url: raffleUrl,
     };
 
@@ -88,7 +96,7 @@ const RaffleCard = React.memo(function RaffleCard({ raffle, currentUser, onDelet
     } catch (error: any) {
       if (error.name !== 'AbortError') {
         console.error("Could not use Web Share API, falling back to WhatsApp.", error);
-        const whatsappText = `${shareText}\n\n👉 ${raffleUrl}`;
+        const whatsappText = newShareText;
         const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(whatsappText)}`;
         window.open(whatsappUrl, '_blank');
       }
