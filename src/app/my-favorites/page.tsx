@@ -95,22 +95,30 @@ export default function MyFavoritesPage() {
   }, [authIsLoading, isLoggedIn, fetchFavorites, user?.favoriteRaffleIds]);
 
   const handleDeleteRaffle = useCallback(async (raffleId: string) => {
+    if (!user) {
+      toast({
+        title: "Error de Autenticación",
+        description: "No se pudo identificar al usuario para realizar esta acción.",
+        variant: "destructive",
+      });
+      return;
+    }
     try {
-      await deleteRaffleAndParticipations(raffleId);
+      await deleteRaffleAndParticipations(raffleId, user);
       toast({
         title: "Rifa Eliminada",
         description: "La rifa y sus participaciones asociadas han sido eliminadas.",
       });
       fetchFavorites(); // Re-fetch to update the list
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error deleting raffle:", error);
       toast({
         title: "Error al Eliminar",
-        description: "No se pudo eliminar la rifa.",
+        description: error.message || "No se pudo eliminar la rifa.",
         variant: "destructive",
       });
     }
-  }, [toast, fetchFavorites]);
+  }, [toast, fetchFavorites, user]);
 
   const handleViewProfile = useCallback((profile: ManagedUser) => {
     setSelectedCreatorProfile(profile);

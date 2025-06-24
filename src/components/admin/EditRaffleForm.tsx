@@ -331,37 +331,38 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
       status: status,
       acceptedPaymentMethods: acceptedPaymentMethodsResult,
     };
-
+    
+    // --- Start: Refined Change Detection Logic ---
     const actualUpdatedFields: string[] = [];
     (Object.keys(raffleDataForDb) as Array<keyof typeof raffleDataForDb>).forEach(key => {
-        if (key === 'drawDate' || key === 'publicationDate') {
-            if (raffleDataForDb[key] !== initialFormState[key as keyof EditRaffleFormValues]) {
-                 actualUpdatedFields.push(key);
-            }
-        } else if (key === 'prizes') {
-            if (JSON.stringify(data.prizes) !== JSON.stringify(initialFormState.prizes)) {
-                actualUpdatedFields.push(key);
-            }
-        } else if (key === 'acceptedPaymentMethods') {
-            const initialIds = initialFormState.selectedPaymentMethodIds.slice().sort();
-            const currentIds = data.selectedPaymentMethodIds.slice().sort();
-            const initialDetails = JSON.stringify(initialFormState.paymentMethodDetails);
-            const currentDetails = JSON.stringify(data.paymentMethodDetails);
+      const newValue = raffleDataForDb[key];
+      const oldValue = initialFormState[key as keyof EditRaffleFormValues];
 
-            if (JSON.stringify(initialIds) !== JSON.stringify(currentIds) || initialDetails !== currentDetails) {
-                actualUpdatedFields.push(key);
-            }
-        } else if (String(raffleDataForDb[key]) !== String(initialFormState[key as keyof EditRaffleFormValues])) {
-             if (initialFormState[key as keyof EditRaffleFormValues] !== undefined || raffleDataForDb[key] !== undefined) {
-                 actualUpdatedFields.push(key);
-             }
+      if (key === 'drawDate') {
+        if (format(data.drawDate, 'yyyy-MM-dd') !== format(initialFormState.drawDate, 'yyyy-MM-dd')) {
+          actualUpdatedFields.push(key);
         }
+      } else if (key === 'publicationDate') {
+        const newPubDate = data.isScheduled && data.publicationDate && data.publicationTime ? publicationDateISO : null;
+        const oldPubDate = initialFormState.isScheduled && initialFormState.publicationDate ? new Date(initialFormState.publicationDate).toISOString() : null;
+        if (newPubDate !== oldPubDate) {
+          actualUpdatedFields.push(key);
+        }
+      } else if (key === 'prizes' || key === 'acceptedPaymentMethods') {
+        if (JSON.stringify(newValue) !== JSON.stringify(oldValue)) {
+          actualUpdatedFields.push(key);
+        }
+      } else if (String(newValue) !== String(oldValue)) {
+        if (oldValue !== undefined || newValue !== undefined) {
+          actualUpdatedFields.push(key);
+        }
+      }
     });
 
     if (finalImage !== initialFormState.image) {
       if (!actualUpdatedFields.includes('image')) actualUpdatedFields.push('image');
     }
-
+    // --- End: Refined Change Detection Logic ---
 
     try {
       if (actualUpdatedFields.length > 0) {
@@ -383,7 +384,8 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
         id: data.id,
         prizes: raffleDataForDb.prizes || [],
         creatorUsername: raffle.creatorUsername,
-        soldNumbers: raffle.soldNumbers,
+        soldTicketsCount: raffle.soldTicketsCount,
+        confirmedPaymentsCount: raffle.confirmedPaymentsCount,
         acceptedPaymentMethods: acceptedPaymentMethodsResult,
       };
 

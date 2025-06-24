@@ -25,6 +25,7 @@ export interface Raffle {
   pricePerTicket: number;
   totalNumbers: number;
   soldTicketsCount: number;
+  confirmedPaymentsCount: number; // New field for data integrity
   prizes: Prize[];
   acceptedPaymentMethods?: AcceptedPaymentMethod[];
   creatorUsername?: string;

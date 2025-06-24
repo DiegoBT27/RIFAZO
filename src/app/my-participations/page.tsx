@@ -209,10 +209,33 @@ ID de Participación: ${participation.id}`;
             const participationRaffle = rafflesMap[participation.raffleId];
             const raffleResult = raffleResultsMap[participation.raffleId];
 
-            const isRaffleDeleted = !participationRaffle;
-            const isRaffleArchivedWithResult = isRaffleDeleted && !!raffleResult;
+            const isRaffleArchivedWithResult = !participationRaffle && !!raffleResult;
             
+            // CRITICAL FIX: Ensure sourceOfTruth is not undefined.
             const sourceOfTruth = isRaffleArchivedWithResult ? raffleResult : participationRaffle;
+
+            // If raffle was deleted and has no results, sourceOfTruth will be undefined. Handle this case.
+            if (!sourceOfTruth) {
+              return (
+                <Card key={participation.id} className="shadow-lg border-neutral-500/30 bg-neutral-500/10 opacity-70">
+                  <CardHeader className="pb-2 sm:pb-3 pt-3 sm:pt-4 px-3 sm:px-4">
+                    <CardTitle className="font-headline text-base sm:text-lg text-foreground line-clamp-2 flex-grow pr-2">
+                      {participation.raffleName}
+                    </CardTitle>
+                    <Badge variant="destructive" className="mt-1.5 py-1 text-xs sm:text-sm w-fit">
+                      <Trash2 className="mr-1.5 h-4 w-4" /> Rifa No Disponible
+                    </Badge>
+                  </CardHeader>
+                  <CardContent className="p-3 sm:p-4 pt-1.5 sm:pt-2 space-y-1 text-xs">
+                    <p className="flex items-center"><Ticket className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> Números: <span className="font-semibold ml-1">{participation.numbers.map(n => String(n)).join(', ')}</span></p>
+                     <p className="text-muted-foreground italic">Esta rifa ha sido eliminada por el organizador y no se completó.</p>
+                  </CardContent>
+                  <CardFooter className="p-3 sm:p-4 flex items-center justify-end gap-2">
+                     <Button variant="outline" size="sm" className="flex-1 text-xs h-8" disabled><Eye className="mr-1.5 h-3.5 w-3.5"/> Ver Detalles</Button>
+                  </CardFooter>
+                </Card>
+              );
+            }
 
             const paymentStatusKey = participation.paymentStatus as keyof typeof statusIcons;
             const statusDisplay = statusIcons[paymentStatusKey] || statusIcons.unknown;
@@ -220,10 +243,10 @@ ID de Participación: ${participation.id}`;
             const currentStatusTextForDialog = statusTextForDialog[paymentStatusKey] || statusTextForDialog.unknown;
             const currentStatusVariantForDialog = statusVariantForDialog[paymentStatusKey] || statusVariantForDialog.unknown;
 
-            const isRaffleCompleted = sourceOfTruth?.status === 'completed' || isRaffleArchivedWithResult;
+            const isRaffleCompleted = sourceOfTruth.status === 'completed' || isRaffleArchivedWithResult;
             
             let userWinningPrizes: { number: number; prize: Prize }[] = [];
-            if (isRaffleCompleted && sourceOfTruth?.winningNumbers?.length) {
+            if (isRaffleCompleted && sourceOfTruth.winningNumbers?.length) {
               sourceOfTruth.winningNumbers.forEach((winningNumber, index) => {
                 const prize = (sourceOfTruth.prizes || [])[index];
                 if (winningNumber !== null && prize && participation.numbers.includes(winningNumber)) {
@@ -235,10 +258,10 @@ ID de Participación: ${participation.id}`;
               });
             }
             const isWinner = userWinningPrizes.length > 0;
-            const allWinningNumbersStr = sourceOfTruth?.winningNumbers?.filter(n => n !== null).join(', ') || '';
-            const raffleName = sourceOfTruth?.name || sourceOfTruth?.raffleName || participation.raffleName;
+            const allWinningNumbersStr = sourceOfTruth.winningNumbers?.filter(n => n !== null).join(', ') || '';
+            const raffleName = sourceOfTruth.name || sourceOfTruth.raffleName || participation.raffleName;
             
-            const canRate = !isRaffleDeleted &&
+            const canRate = !isRaffleArchivedWithResult &&
                             participation.paymentStatus === 'confirmed' && 
                             isRaffleCompleted && 
                             participationRaffle?.creatorUsername && 
@@ -246,130 +269,118 @@ ID de Participación: ${participation.id}`;
             
             return (
             <Dialog key={participation.id}>
-              <DialogTrigger asChild>
-                <Card className={cn(
-                  "shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col justify-between cursor-pointer",
-                  isWinner && "border-2 border-green-500 bg-green-500/10",
-                  isRaffleCompleted && !isWinner && "border-red-500/30 bg-red-500/10",
-                  isRaffleDeleted && !isRaffleArchivedWithResult && "border-neutral-500/30 bg-neutral-500/10 opacity-70"
-                )}>
-                  <CardHeader className="pb-2 sm:pb-3 pt-3 sm:pt-4 px-3 sm:px-4">
-                    <div className="flex justify-between items-start">
-                      <CardTitle className="font-headline text-base sm:text-lg text-foreground line-clamp-2 flex-grow pr-2">
-                         {raffleName}
-                      </CardTitle>
-                      <span title={statusDisplay.title} className={`flex-shrink-0 ${statusDisplay.color}`}>
-                        {React.cloneElement(statusDisplay.icon, { className: "h-5 w-5"})}
-                      </span>
-                    </div>
-                     {isRaffleDeleted && !isRaffleArchivedWithResult ? (
-                        <Badge variant="destructive" className="mt-1.5 py-1 text-xs sm:text-sm w-fit">
-                            <Trash2 className="mr-1.5 h-4 w-4" /> No disponible
-                        </Badge>
-                     ) : isRaffleArchivedWithResult ? (
-                         <Badge variant="secondary" className="mt-1.5 py-1 text-xs sm:text-sm w-fit">
-                             <Archive className="mr-1.5 h-4 w-4" /> Finalizada y Archivada
-                         </Badge>
-                     ) : isWinner ? (
-                      <Badge variant="default" className="mt-1.5 bg-green-600 hover:bg-green-700 text-green-50 py-1 text-xs sm:text-sm w-fit">
-                        <Trophy className="mr-1.5 h-4 w-4" /> ¡BOLETO GANADOR!
-                      </Badge>
-                    ) : isRaffleCompleted && (sourceOfTruth?.winningNumbers?.length ?? 0) > 0 ? (
-                      <Badge variant="outline" className="mt-1.5 border-red-500/70 text-red-600/90 py-1 text-xs sm:text-sm w-fit">
-                        <AlertCircle className="mr-1.5 h-4 w-4" /> Nros. Ganadores: {allWinningNumbersStr}
-                      </Badge>
-                    ) : null}
-                  </CardHeader>
-                  <CardContent className="p-3 sm:p-4 pt-1.5 sm:pt-2 space-y-1 text-xs">
-                    <p className="flex items-center"><Ticket className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> Números: <span className="font-semibold ml-1">{participation.numbers.map(n => String(n)).join(', ')}</span></p>
-                    <p className="flex items-center"><CalendarDays className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> Fecha: <span className="font-semibold ml-1">{new Date(participation.purchaseDate).toLocaleDateString('es-VE')}</span></p>
-                    {participation.participantName && (
-                      <p className="flex items-center"><UserCircleIcon className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> A nombre de: <span className="font-semibold ml-1">{participation.participantName} {participation.participantLastName}</span></p>
-                    )}
-                    {creatorProfile && (
-                      <p className="flex items-center"><ShoppingBag className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> De: <span className="font-semibold ml-1">{creatorProfile.publicAlias || creatorProfile.username}</span></p>
-                    )}
-                    {isRaffleCompleted && (sourceOfTruth?.winningNumbers?.length ?? 0) > 0 && (
-                        <div className={cn(
-                            "mt-1.5 pt-1.5 border-t border-dashed text-xs",
-                            isWinner ? "text-green-700 font-semibold" : "text-muted-foreground"
-                        )}>
-                            {isWinner ? (
-                                <>
-                                    <p>¡Ganaste!</p>
-                                    <ul className="list-disc list-inside pl-2">
-                                    {userWinningPrizes.map(wp => (
-                                        <li key={wp.number}>Tu número <strong>{wp.number}</strong> ganó: {wp.prize.description}</li>
-                                    ))}
-                                    </ul>
-                                </>
-                            ) : (
-                                <p>Sorteo finalizado. Los números ganadores fueron {allWinningNumbersStr}.</p>
-                            )}
-                        </div>
-                    )}
-                    {isRaffleCompleted && participation.userHasRatedOrganizerForRaffle && (
-                       <p className="text-xs text-green-600 italic mt-1.5">¡Gracias por tu calificación!</p>
-                    )}
-                  </CardContent>
-                  <CardFooter className="p-3 sm:p-4 flex items-center justify-end gap-2">
-                     <Button variant="outline" size="sm" className="flex-1 text-xs h-8"><Eye className="mr-1.5 h-3.5 w-3.5"/> Ver Detalles</Button>
-                     {creatorProfile && !isRaffleDeleted && (
-                      <Button
-                        variant="secondary"
-                        size="icon"
-                        onClick={(e) => { e.stopPropagation(); handleViewProfile(creatorProfile);}}
-                        className="h-8 w-8"
-                        title="Ver Perfil del Organizador"
-                      >
-                        <Info className="h-4 w-4"/>
-                      </Button>
-                    )}
+              <Card className={cn(
+                "shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col justify-between",
+                isWinner && "border-2 border-green-500 bg-green-500/10",
+                isRaffleCompleted && !isWinner && "border-red-500/30 bg-red-500/10",
+              )}>
+                <CardHeader className="pb-2 sm:pb-3 pt-3 sm:pt-4 px-3 sm:px-4">
+                  <div className="flex justify-between items-start">
+                    <CardTitle className="font-headline text-base sm:text-lg text-foreground line-clamp-2 flex-grow pr-2">
+                       {raffleName}
+                    </CardTitle>
+                    <span title={statusDisplay.title} className={`flex-shrink-0 ${statusDisplay.color}`}>
+                      {React.cloneElement(statusDisplay.icon, { className: "h-5 w-5"})}
+                    </span>
+                  </div>
+                   {isRaffleArchivedWithResult ? (
+                       <Badge variant="secondary" className="mt-1.5 py-1 text-xs sm:text-sm w-fit">
+                           <Archive className="mr-1.5 h-4 w-4" /> Finalizada y Archivada
+                       </Badge>
+                   ) : isWinner ? (
+                    <Badge variant="default" className="mt-1.5 bg-green-600 hover:bg-green-700 text-green-50 py-1 text-xs sm:text-sm w-fit">
+                      <Trophy className="mr-1.5 h-4 w-4" /> ¡BOLETO GANADOR!
+                    </Badge>
+                  ) : isRaffleCompleted && (sourceOfTruth.winningNumbers?.length ?? 0) > 0 ? (
+                    <Badge variant="outline" className="mt-1.5 border-red-500/70 text-red-600/90 py-1 text-xs sm:text-sm w-fit">
+                      <AlertCircle className="mr-1.5 h-4 w-4" /> Nros. Ganadores: {allWinningNumbersStr}
+                    </Badge>
+                  ) : null}
+                </CardHeader>
+                <CardContent className="p-3 sm:p-4 pt-1.5 sm:pt-2 space-y-1 text-xs">
+                  <p className="flex items-center"><Ticket className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> Números: <span className="font-semibold ml-1">{participation.numbers.map(n => String(n)).join(', ')}</span></p>
+                  <p className="flex items-center"><CalendarDays className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> Fecha: <span className="font-semibold ml-1">{new Date(participation.purchaseDate).toLocaleDateString('es-VE')}</span></p>
+                  {participation.participantName && (
+                    <p className="flex items-center"><UserCircleIcon className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> A nombre de: <span className="font-semibold ml-1">{participation.participantName} {participation.participantLastName}</span></p>
+                  )}
+                  {creatorProfile && (
+                    <p className="flex items-center"><ShoppingBag className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> De: <span className="font-semibold ml-1">{creatorProfile.publicAlias || creatorProfile.username}</span></p>
+                  )}
+                  {isRaffleCompleted && (sourceOfTruth.winningNumbers?.length ?? 0) > 0 && (
+                      <div className={cn(
+                          "mt-1.5 pt-1.5 border-t border-dashed text-xs",
+                          isWinner ? "text-green-700 font-semibold" : "text-muted-foreground"
+                      )}>
+                          {isWinner ? (
+                              <>
+                                  <p>¡Ganaste!</p>
+                                  <ul className="list-disc list-inside pl-2">
+                                  {userWinningPrizes.map(wp => (
+                                      <li key={wp.number}>Tu número <strong>{wp.number}</strong> ganó: {wp.prize.description}</li>
+                                  ))}
+                                  </ul>
+                              </>
+                          ) : (
+                              <p>Sorteo finalizado. Los números ganadores fueron {allWinningNumbersStr}.</p>
+                          )}
+                      </div>
+                  )}
+                  {isRaffleCompleted && participation.userHasRatedOrganizerForRaffle && (
+                     <p className="text-xs text-green-600 italic mt-1.5">¡Gracias por tu calificación!</p>
+                  )}
+                </CardContent>
+                <CardFooter className="p-3 sm:p-4 flex items-center justify-end gap-2">
+                   <DialogTrigger asChild>
+                    <Button variant="outline" size="sm" className="flex-1 text-xs h-8"><Eye className="mr-1.5 h-3.5 w-3.5"/> Ver Detalles</Button>
+                   </DialogTrigger>
+                   {creatorProfile && !isRaffleArchivedWithResult && (
                     <Button
-                      variant="outline"
+                      variant="secondary"
                       size="icon"
-                      onClick={(e) => { e.stopPropagation(); handleResendWhatsappMessage(participation);}}
+                      onClick={(e) => { e.stopPropagation(); handleViewProfile(creatorProfile);}}
                       className="h-8 w-8"
-                      title="Contactar Organizador por WhatsApp"
-                      disabled={isRaffleDeleted && !isRaffleArchivedWithResult}
+                      title="Ver Perfil del Organizador"
                     >
-                      <MessageSquare className="h-4 w-4"/>
+                      <Info className="h-4 w-4"/>
                     </Button>
-                     {canRate && sourceOfTruth?.creatorUsername && (
-                       <Button
-                        variant="default"
-                        size="icon"
-                        className="h-8 w-8 bg-yellow-500 hover:bg-yellow-600 text-white"
-                        onClick={(e) => {
-                           e.stopPropagation(); 
-                           handleOpenRatingDialog(participation.raffleId, raffleName, sourceOfTruth.creatorUsername!);
-                        }}
-                        title="Calificar Organizador"
-                      >
-                        <StarIcon className="h-4 w-4"/>
-                      </Button>
-                     )}
-                  </CardFooter>
-                </Card>
-              </DialogTrigger>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={(e) => { e.stopPropagation(); handleResendWhatsappMessage(participation);}}
+                    className="h-8 w-8"
+                    title="Contactar Organizador por WhatsApp"
+                    disabled={isRaffleArchivedWithResult}
+                  >
+                    <MessageSquare className="h-4 w-4"/>
+                  </Button>
+                   {canRate && sourceOfTruth.creatorUsername && (
+                     <Button
+                      variant="default"
+                      size="icon"
+                      className="h-8 w-8 bg-yellow-500 hover:bg-yellow-600 text-white"
+                      onClick={(e) => {
+                         e.stopPropagation(); 
+                         handleOpenRatingDialog(participation.raffleId, raffleName, sourceOfTruth.creatorUsername!);
+                      }}
+                      title="Calificar Organizador"
+                    >
+                      <StarIcon className="h-4 w-4"/>
+                    </Button>
+                   )}
+                </CardFooter>
+              </Card>
               <DialogContent className="sm:max-w-md">
                  <DialogHeader>
                     <DialogTitle className="font-headline text-lg">Detalles de tu Boleto</DialogTitle>
                     <DialogDescription>
-                      {isRaffleDeleted && !isRaffleArchivedWithResult
-                        ? 'Esta rifa ya no está disponible.'
+                      {isRaffleArchivedWithResult
+                        ? 'Esta rifa ha finalizado y sus datos han sido archivados.'
                         : `Información sobre tu participación en la rifa "${raffleName}".`
                       }
                     </DialogDescription>
                   </DialogHeader>
                   <ScrollArea className="max-h-[60vh] pr-2">
-                  {isRaffleDeleted && !isRaffleArchivedWithResult ? (
-                    <div className="py-4 text-center">
-                        <AlertCircle className="mx-auto h-12 w-12 text-destructive mb-3" />
-                        <p className="font-semibold text-destructive">La Rifa ha sido Eliminada</p>
-                        <p className="text-sm text-muted-foreground mt-1">El organizador ha eliminado esta rifa. Para más información, puedes intentar contactarlo.</p>
-                    </div>
-                  ) : (
                     <div className="py-4 space-y-2 text-sm">
                       <p><strong>Rifa:</strong> {raffleName}</p>
                       <p><strong>Números:</strong> {participation.numbers.map(n => String(n)).join(', ')}</p>
@@ -377,7 +388,7 @@ ID de Participación: ${participation.id}`;
                       <p><strong>Estado del Pago:</strong> <Badge variant={currentStatusVariantForDialog} className="py-1"> {React.cloneElement(statusIcons[paymentStatusKey]?.icon || statusIcons.unknown.icon, {className:"h-3.5 w-3.5"})} <span className="ml-1">{currentStatusTextForDialog}</span></Badge></p>
                       {creatorProfile && <p><strong>Organizador:</strong> {creatorProfile.publicAlias || creatorProfile.username}</p>}
                       
-                       {sourceOfTruth?.drawDate && (
+                       {sourceOfTruth.drawDate && (
                         <p className="flex items-center">
                           <CalendarDays className="mr-1.5 h-4 w-4 text-muted-foreground" />
                           <strong>Fecha Principal del Sorteo:</strong> <span className="ml-1">{new Date(sourceOfTruth.drawDate + 'T00:00:00').toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
@@ -386,7 +397,7 @@ ID de Participación: ${participation.id}`;
                       
                       {participation.paymentNotes && <p><strong>Notas Adicionales del Comprador:</strong> {participation.paymentNotes}</p>}
 
-                      {isRaffleCompleted && sourceOfTruth?.winningNumbers?.length && (
+                      {isRaffleCompleted && sourceOfTruth.winningNumbers?.length && (
                         <div className={cn(
                             "mt-3 p-3 rounded-md border space-y-0.5",
                             isWinner ? "bg-green-500/10 border-green-500" : "bg-red-500/10 border-red-500"
@@ -416,10 +427,10 @@ ID de Participación: ${participation.id}`;
                                     <div className="pt-2">
                                         <p className="text-muted-foreground font-medium text-xs">Resultados Generales:</p>
                                         <ul className="text-muted-foreground text-xs list-decimal list-inside pl-3 space-y-1">
-                                            {(sourceOfTruth?.prizes || []).map((prize, index) => (
+                                            {(sourceOfTruth.prizes || []).map((prize, index) => (
                                                 <li key={index}>
-                                                    <strong>{prize.description}:</strong> Nro. {sourceOfTruth?.winningNumbers?.[index] || 'N/A'}. 
-                                                    Ganador: {sourceOfTruth?.winnerNames?.[index] || <span className="italic">No registrado</span>}.
+                                                    <strong>{prize.description}:</strong> Nro. {sourceOfTruth.winningNumbers?.[index] || 'N/A'}. 
+                                                    Ganador: {sourceOfTruth.winnerNames?.[index] || <span className="italic">No registrado</span>}.
                                                 </li>
                                             ))}
                                         </ul>
@@ -463,7 +474,6 @@ ID de Participación: ${participation.id}`;
                         </div>
                       )}
                     </div>
-                   )}
                   </ScrollArea>
                   <DialogFooter className="pt-3 border-t">
                     <DialogClose asChild>

@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -20,6 +18,7 @@ import { motion } from 'framer-motion';
 import { getRaffleById, getParticipationsByRaffleId, getUserByUsername as getCreatorProfileByUsername } from '@/lib/firebase/firestoreService';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
+
 
 const PaymentUploadForm = dynamic(() => import('@/components/raffles/PaymentUploadForm'), {
   loading: () => <div className="flex justify-center items-center h-40"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>,
@@ -117,48 +116,30 @@ export default function RaffleDetailsPage() {
     const raffleUrl = `${window.location.origin}/raffles/${raffle.id}`;
     const shareTitle = `¡Participa en la rifa "${raffle.name}"!`;
     const firstPrize = raffle.prizes?.[0]?.description || "premios increíbles";
-    const drawDate = new Date(raffle.drawDate + 'T00:00:00-04:00').toLocaleDateString('es-VE', { day: 'numeric', month: 'long', year: 'numeric' });
+    const drawDate = new Date(raffle.drawDate + 'T00:00:00Z').toLocaleDateString('es-VE', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
     const price = raffle.pricePerTicket.toFixed(2);
     
     const newShareText = `🎉 ¡Participa ya, Rifa activa!\n` +
                          `🎁 ${firstPrize}\n` +
                          `🎫 $${price} | 📅 Sorteo: ${drawDate}\n\n` +
-                         `👉 Participa aquí: ${raffleUrl}\n\n` +
-                         `🔐 Organiza con RIFAZO`;
+                         `Entra en el Link y participa 👉 ${raffleUrl}`;
 
-    const shareData: ShareData = {
+    const shareData = {
       title: shareTitle,
       text: newShareText,
-      url: raffleUrl,
     };
-
-    try {
-      const response = await fetch(raffle.image);
-      if (!response.ok) throw new Error("Failed to fetch image");
-      
-      const blob = await response.blob();
-      const file = new File([blob], 'rifa.png', { type: blob.type });
-
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        shareData.files = [file];
-      }
-    } catch (e) {
-      console.error("Could not fetch image for sharing, will share text only.", e);
-    }
     
     try {
       if (navigator.share) {
         await navigator.share(shareData);
-        toast({ title: "¡Rifa compartida!", description: "Gracias por correr la voz." });
       } else {
-        throw new Error("Web Share API not supported");
+        const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(newShareText)}`;
+        window.open(whatsappUrl, '_blank');
       }
     } catch (error: any) {
-      // Silently ignore AbortError and NotAllowedError, which are triggered when the user cancels the share dialog.
       if (error.name !== 'AbortError' && error.name !== 'NotAllowedError') {
         console.error("Could not use Web Share API, falling back to WhatsApp.", error);
-        const whatsappText = newShareText;
-        const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(whatsappText)}`;
+        const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(newShareText)}`;
         window.open(whatsappUrl, '_blank');
       }
     }
@@ -200,8 +181,8 @@ export default function RaffleDetailsPage() {
 
   const availableTickets = raffle.totalNumbers - (raffle.soldTicketsCount || 0);
 
-  const drawDateObj = new Date(raffle.drawDate + 'T00:00:00-04:00'); // Assuming Venezuela timezone (GMT-4)
-  const formattedDrawDate = drawDateObj.toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const drawDateObj = new Date(raffle.drawDate + 'T00:00:00Z');
+  const formattedDrawDate = drawDateObj.toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
   
 
   return (
@@ -256,7 +237,7 @@ export default function RaffleDetailsPage() {
           <div className="grid grid-cols-2 gap-x-1.5 gap-y-1 text-[0.7rem] sm:text-xs">
             <div className="flex items-center">
               <DollarSign className="mr-1 h-3 w-3 sm:h-3.5 sm:w-3.5 text-accent" />
-              Precio: <strong className="ml-1">$\${raffle.pricePerTicket.toFixed(2)}</strong>
+              Precio: <strong className="ml-1">$${raffle.pricePerTicket.toFixed(2)}</strong>
             </div>
             <div className="flex items-center">
               <CalendarDays className="mr-1 h-3 w-3 sm:h-3.5 sm:w-3.5 text-accent" />

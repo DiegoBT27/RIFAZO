@@ -5,7 +5,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import type { ManagedUser, PlanName } from '@/types';
-import { getUsers, assignPlanToAdmin, removeAdminPlan } from '@/lib/firebase/firestoreService';
+import { getUsers, assignPlanToAdmin, removeAdminPlan, getUserById } from '@/lib/firebase/firestoreService';
 import { PLAN_CONFIG, PLAN_NAMES_ORDERED } from '@/lib/config/plans';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -84,9 +84,16 @@ export default function AdminPlanManagerClient() {
       });
       setSelectedPlanByUser(prev => ({ ...prev, [adminUser.id]: undefined }));
       setSelectedCustomStartDateByUser(prev => ({...prev, [adminUser.id]: undefined}));
-      fetchAdminUsers();
+      
       if (currentUser.username === adminUser.username) {
         await refreshUser();
+      }
+      
+      const updatedUser = await getUserById(adminUser.id);
+      if (updatedUser) {
+        setAdminUsers(prevUsers => prevUsers.map(u => u.id === adminUser.id ? updatedUser : u));
+      } else {
+        fetchAdminUsers(); // Fallback if user not found
       }
     } catch (error: any) {
       console.error("Error assigning plan:", error);
@@ -104,6 +111,7 @@ export default function AdminPlanManagerClient() {
     }
     
     const adminUserId = userToRemovePlan.id;
+    const adminUsername = userToRemovePlan.username;
     setIsRemovingPlan(prev => ({ ...prev, [adminUserId]: true }));
     try {
       await removeAdminPlan(adminUserId, currentUser.username);
@@ -111,9 +119,16 @@ export default function AdminPlanManagerClient() {
         title: "Plan Removido",
         description: `El plan ha sido removido para ${userToRemovePlan.username}.`,
       });
-      fetchAdminUsers();
-      if (currentUser.username === userToRemovePlan.username) {
+      
+      if (currentUser.username === adminUsername) {
         await refreshUser();
+      }
+
+      const updatedUser = await getUserById(adminUserId);
+      if (updatedUser) {
+        setAdminUsers(prev => prev.map(u => u.id === adminUserId ? updatedUser : u));
+      } else {
+        fetchAdminUsers(); // Fallback
       }
     } catch (error: any) {
       console.error("Error removing plan:", error);

@@ -21,7 +21,7 @@ import {
   increment,
   arrayUnion,
   arrayRemove,
-  documentId
+  documentId,
 } from 'firebase/firestore';
 import type { Raffle, ManagedUser, Participation, RaffleResult, ActivityLog, Rating, PlanName } from '@/types';
 import { PLAN_CONFIG, getPlanDetails } from '@/lib/config/plans';
@@ -280,26 +280,35 @@ export const deleteUser = async (userId: string, deleterUsername: string): Promi
         }
         const userToDelete = { id: userToDeleteSnap.id, ...userToDeleteSnap.data() } as ManagedUser;
 
-        const rafflesToUpdate: Record<string, number> = {};
+        const rafflesToUpdateTickets: Record<string, number> = {};
+        const rafflesToUpdateConfirmed: Record<string, number> = {};
 
         // 1. Find all participations by this user to determine which raffles need their counts updated.
         const participationsQuery = query(participationsCollection, where('participantUsername', '==', userToDelete.username));
         const participationsSnapshot = await getDocs(participationsQuery);
         
-        participationsSnapshot.forEach(docSnap => {
+        for (const docSnap of participationsSnapshot.docs) {
             const p = docSnap.data() as Participation;
             if (p.paymentStatus === 'confirmed') {
-                rafflesToUpdate[p.raffleId] = (rafflesToUpdate[p.raffleId] || 0) + p.numbers.length;
+                rafflesToUpdateTickets[p.raffleId] = (rafflesToUpdateTickets[p.raffleId] || 0) + p.numbers.length;
+                rafflesToUpdateConfirmed[p.raffleId] = (rafflesToUpdateConfirmed[p.raffleId] || 0) + 1;
             }
             transaction.delete(docSnap.ref); // Delete the participation document
-        });
+        }
 
-        // 2. Decrement the soldTicketsCount for each affected raffle
-        for (const raffleId in rafflesToUpdate) {
-            const decrementValue = rafflesToUpdate[raffleId];
-            if (decrementValue > 0) {
+        // 2. Decrement the counters for each affected raffle
+        for (const raffleId in rafflesToUpdateTickets) {
+            const ticketDecrement = rafflesToUpdateTickets[raffleId];
+            const confirmedDecrement = rafflesToUpdateConfirmed[raffleId] || 0;
+            if (ticketDecrement > 0) {
                 const raffleRef = doc(db, 'raffles', raffleId);
-                transaction.update(raffleRef, { soldTicketsCount: increment(-decrementValue) });
+                const raffleSnap = await transaction.get(raffleRef);
+                if (raffleSnap.exists()) {
+                  transaction.update(raffleRef, { 
+                    soldTicketsCount: increment(-ticketDecrement),
+                    confirmedPaymentsCount: increment(-confirmedDecrement)
+                  });
+                }
             }
         }
 
@@ -579,7 +588,7 @@ export const getRaffleById = async (raffleId: string): Promise<Raffle | null> =>
   return null;
 };
 
-export const addRaffle = async (raffleData: Omit<Raffle, 'id' | 'soldTicketsCount'>, creator: ManagedUser): Promise<Raffle> => {
+export const addRaffle = async (raffleData: Omit<Raffle, 'id' | 'soldTicketsCount' | 'confirmedPaymentsCount'>, creator: ManagedUser): Promise<Raffle> => {
   if (!creator || !creator.id) {
     throw new Error("Información del creador inválida. No se puede crear la rifa.");
   }
@@ -611,7 +620,7 @@ export const addRaffle = async (raffleData: Omit<Raffle, 'id' | 'soldTicketsCoun
     }
 
     // Create the new raffle
-    const newRaffleData = { ...raffleData, soldTicketsCount: 0 };
+    const newRaffleData = { ...raffleData, soldTicketsCount: 0, confirmedPaymentsCount: 0 };
     const newRaffleDocRef = doc(collection(db, 'raffles')); // Create a new ref with a unique ID
     transaction.set(newRaffleDocRef, newRaffleData);
     
@@ -742,68 +751,59 @@ export const updateRaffle = async (raffleId: string, raffleData: Partial<Raffle>
 
 export const deleteRaffleAndParticipations = async (raffleId: string, currentUser: ManagedUser): Promise<void> => {
   const raffleDocRef = doc(db, 'raffles', raffleId);
-  const raffleDoc = await getDoc(raffleDocRef);
 
-  if (!raffleDoc.exists()) {
-    throw new Error("Raffle not found.");
-  }
-  const raffleData = raffleDoc.data() as Raffle;
+  await runTransaction(db, async (transaction) => {
+    const raffleDoc = await transaction.get(raffleDocRef);
 
-  // Business logic validation
-  if (currentUser.role === 'admin') {
-    if (raffleData.creatorUsername !== currentUser.username) {
-      throw new Error("Permission denied: You can only delete your own raffles.");
+    if (!raffleDoc.exists()) {
+      throw new Error("Raffle not found.");
     }
-    if (raffleData.status === 'completed') {
+    const raffleData = raffleDoc.data() as Raffle;
+
+    // Business logic validation INSIDE the transaction for atomicity
+    if (currentUser.role === 'admin') {
+      if (raffleData.creatorUsername !== currentUser.username) {
+        throw new Error("Permission denied: You can only delete your own raffles.");
+      }
+      if (raffleData.status === 'completed') {
         throw new Error("Permission denied: Admins cannot delete completed raffles.");
+      }
+      if (raffleData.confirmedPaymentsCount > 0) {
+        throw new Error("No se puede eliminar una rifa que ya tiene pagos confirmados.");
+      }
     }
-    const participationsQuery = query(participationsCollection, where('raffleId', '==', raffleId), where('paymentStatus', '==', 'confirmed'));
-    const confirmedParticipations = await getDocs(participationsQuery);
-    if (!confirmedParticipations.empty) {
-      throw new Error("No se puede eliminar una rifa que ya tiene pagos confirmados.");
-    }
-  }
-  // Founder can delete any raffle, no extra checks needed here.
 
+    // Because queries are not allowed in transactions, we have to do these reads first
+    // This part is not atomic with the delete, but it's the best we can do without cloud functions
+    const participationsQuery = query(participationsCollection, where('raffleId', '==', raffleId));
+    const participationsSnapshot = await getDocs(participationsQuery);
+    
+    const resultsQuery = query(raffleResultsCollection, where('raffleId', '==', raffleId));
+    const resultsSnapshot = await getDocs(resultsQuery);
 
-  const batch = writeBatch(db);
+    const ratingsQuery = query(ratingsCollection, where('raffleId', '==', raffleId));
+    const ratingsSnapshot = await getDocs(ratingsQuery);
 
-  // 1. Delete the raffle document
-  batch.delete(raffleDocRef);
+    const usersWithFavoriteQuery = query(usersCollection, where('favoriteRaffleIds', 'array-contains', raffleId));
+    const usersWithFavoriteSnapshot = await getDocs(usersWithFavoriteQuery);
 
-  // 2. Delete all associated participations
-  const participationsQuery = query(participationsCollection, where('raffleId', '==', raffleId));
-  const participationsSnapshot = await getDocs(participationsQuery);
-  participationsSnapshot.forEach(doc => {
-    batch.delete(doc.ref);
-  });
-
-  // 3. Delete all associated results
-  const resultsQuery = query(raffleResultsCollection, where('raffleId', '==', raffleId));
-  const resultsSnapshot = await getDocs(resultsQuery);
-  resultsSnapshot.forEach(doc => {
-    batch.delete(doc.ref);
-  });
-
-  // 4. Delete all associated ratings
-  const ratingsQuery = query(ratingsCollection, where('raffleId', '==', raffleId));
-  const ratingsSnapshot = await getDocs(ratingsQuery);
-  ratingsSnapshot.forEach(doc => {
-    batch.delete(doc.ref);
-  });
-  
-  // 5. Find users who have this raffle as a favorite and remove it
-  const usersWithFavoriteQuery = query(usersCollection, where('favoriteRaffleIds', 'array-contains', raffleId));
-  const usersWithFavoriteSnapshot = await getDocs(usersWithFavoriteQuery);
-  usersWithFavoriteSnapshot.forEach(userDoc => {
-    const userRef = doc(db, 'users', userDoc.id);
-    batch.update(userRef, {
-      favoriteRaffleIds: arrayRemove(raffleId)
+    // Now perform the writes within the transaction
+    transaction.delete(raffleDocRef);
+    participationsSnapshot.forEach(doc => transaction.delete(doc.ref));
+    resultsSnapshot.forEach(doc => transaction.delete(doc.ref));
+    ratingsSnapshot.forEach(doc => transaction.delete(doc.ref));
+    usersWithFavoriteSnapshot.forEach(userDoc => {
+      transaction.update(userDoc.ref, { favoriteRaffleIds: arrayRemove(raffleId) });
     });
   });
 
-  // Commit all batched writes
-  await batch.commit();
+  // Log activity after successful transaction
+  await addActivityLog({
+    adminUsername: currentUser.username,
+    actionType: 'RAFFLE_DELETED',
+    targetInfo: `Rifa ID: ${raffleId}`,
+    details: { raffleId: raffleId, raffleName: 'N/A' } // Name might not be available
+  });
 };
 
 
@@ -867,10 +867,22 @@ export const updateParticipation = async (participationId: string, participation
       const raffleDocRef = doc(db, 'raffles', oldParticipationData.raffleId);
       const ticketCount = oldParticipationData.numbers.length;
       
+      let soldTicketsIncrement = 0;
+      let confirmedPaymentsIncrement = 0;
+
       if (oldStatus !== 'confirmed' && newStatus === 'confirmed') {
-        transaction.update(raffleDocRef, { soldTicketsCount: increment(ticketCount) });
+        soldTicketsIncrement = ticketCount;
+        confirmedPaymentsIncrement = 1;
       } else if (oldStatus === 'confirmed' && newStatus !== 'confirmed') {
-        transaction.update(raffleDocRef, { soldTicketsCount: increment(-ticketCount) });
+        soldTicketsIncrement = -ticketCount;
+        confirmedPaymentsIncrement = -1;
+      }
+
+      if (soldTicketsIncrement !== 0 || confirmedPaymentsIncrement !== 0) {
+        transaction.update(raffleDocRef, { 
+          soldTicketsCount: increment(soldTicketsIncrement),
+          confirmedPaymentsCount: increment(confirmedPaymentsIncrement),
+        });
       }
     }
     
@@ -891,7 +903,10 @@ export const deleteParticipation = async (participationId: string): Promise<void
     if (participationData.paymentStatus === 'confirmed') {
       const raffleDocRef = doc(db, 'raffles', participationData.raffleId);
       const ticketCount = participationData.numbers.length;
-      transaction.update(raffleDocRef, { soldTicketsCount: increment(-ticketCount) });
+      transaction.update(raffleDocRef, { 
+        soldTicketsCount: increment(-ticketCount),
+        confirmedPaymentsCount: increment(-1)
+      });
     }
     
     transaction.delete(participationDocRef);

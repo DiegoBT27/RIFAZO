@@ -1,17 +1,13 @@
-
-
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-// Removed useRouter import as it's not directly used for redirection anymore for unauth users
 import dynamic from 'next/dynamic';
 import { useAuth } from '@/contexts/AuthContext';
 import RaffleCard from '@/components/raffles/RaffleCard';
 import SectionTitle from '@/components/shared/SectionTitle';
 import type { Raffle, ManagedUser } from '@/types';
-import { Loader2, Inbox, PlusCircle } from 'lucide-react'; // Removed Search icon
+import { Loader2, Inbox, PlusCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-// Removed Input import
 import {
   Dialog,
   DialogContent,
@@ -37,60 +33,61 @@ const UserProfileDialog = dynamic(() => import('@/components/shared/UserProfileD
 
 export default function HomePage() {
   const { isLoggedIn, isLoading: authIsLoading, user } = useAuth();
-  // const router = useRouter(); // No longer needed for unauth redirect
   const { toast } = useToast();
-  const [allRaffles, setAllRaffles] = useState<Raffle[]>([]);
+  
+  const [raffles, setRaffles] = useState<Raffle[]>([]);
   const [creatorProfiles, setCreatorProfiles] = useState<Record<string, ManagedUser>>({});
   const [pageIsLoading, setPageIsLoading] = useState(true);
+  
   const [isCreateRaffleDialogOpen, setIsCreateRaffleDialogOpen] = useState(false);
   const [isProfileDialogOpen, setIsProfileDialogOpen] = useState(false);
   const [selectedCreatorProfile, setSelectedCreatorProfile] = useState<ManagedUser | null>(null);
   const [rafflesRefreshKey, setRafflesRefreshKey] = useState(0);
-  // Removed searchTerm state
 
-  // Removed useEffect that redirected to /login if !isLoggedIn
-
-  const loadRafflesAndData = useCallback(async () => {
+  const fetchRafflesAndProfiles = useCallback(async () => {
     setPageIsLoading(true);
     try {
-      const rafflesFromDB = await getRaffles();
+      const allRaffles = await getRaffles();
+      const activeRaffles = allRaffles.filter(r => r.status === 'active');
+      setRaffles(activeRaffles);
+
+      const creatorUsernames = [...new Set(
+        activeRaffles
+          .map(r => r.creatorUsername)
+          .filter(Boolean) as string[]
+      )];
       
-      const creatorUsernames = [...new Set(rafflesFromDB.map(r => r.creatorUsername).filter(Boolean) as string[])];
-      const usersFromDB = creatorUsernames.length > 0 ? await getUsersByUsernames(creatorUsernames) : [];
-      
-      const profilesMap: Record<string, ManagedUser> = {};
-      usersFromDB.forEach(u => { profilesMap[u.username] = u; });
-      setCreatorProfiles(profilesMap);
-      
-      setAllRaffles(rafflesFromDB);
+      if (creatorUsernames.length > 0) {
+        const usersFromDB = await getUsersByUsernames(creatorUsernames);
+        const newProfilesMap: Record<string, ManagedUser> = {};
+        usersFromDB.forEach(u => { newProfilesMap[u.username] = u; });
+        setCreatorProfiles(newProfilesMap);
+      }
+
     } catch (error) {
-      console.error("Error loading data from Firestore:", error);
-      toast({ title: "Error", description: "No se pudieron cargar los datos de las rifas.", variant: "destructive" });
-      setAllRaffles([]);
+      console.error("Error loading raffles:", error);
+      toast({ title: "Error", description: "No se pudieron cargar las rifas.", variant: "destructive" });
     } finally {
       setPageIsLoading(false);
     }
-  }, [toast, rafflesRefreshKey]); 
+  }, [toast]);
 
   useEffect(() => {
-    // Load data once auth state is resolved.
-    // This ensures data is fetched initially regardless of login status.
-    // It will also re-fetch if isLoggedIn or rafflesRefreshKey changes, handled by loadRafflesAndData's own dependencies.
     if (!authIsLoading) {
-        loadRafflesAndData();
+      fetchRafflesAndProfiles();
     }
-  }, [authIsLoading, loadRafflesAndData]); // loadRafflesAndData itself depends on things like rafflesRefreshKey
+  }, [authIsLoading, rafflesRefreshKey, fetchRafflesAndProfiles]);
 
+  
   const handleDeleteRaffle = useCallback(async (raffleId: string) => {
     try {
-      // For public page, only currentUser (admin/founder) can delete
       if (!user) throw new Error("Authentication required.");
       await deleteRaffleAndParticipations(raffleId, user);
       toast({
         title: "Rifa Eliminada",
-        description: "La rifa y sus participaciones asociadas han sido eliminadas de Firestore.",
+        description: "La rifa ha sido eliminada.",
       });
-      setRafflesRefreshKey(prev => prev + 1);
+      setRaffles(prevRaffles => prevRaffles.filter(r => r.id !== raffleId));
     } catch (error: any) {
       console.error("Error deleting raffle from Firestore:", error);
       toast({
@@ -106,38 +103,19 @@ export default function HomePage() {
     setIsProfileDialogOpen(true);
   }, []);
 
-  // 1. Handle initial authentication loading state
-  if (authIsLoading) {
+  if (authIsLoading || pageIsLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
         <Loader2 className="animate-spin h-12 w-12 text-primary mx-auto mb-4" />
-        <p className="text-muted-foreground">Verificando sesión...</p>
+        <p className="text-muted-foreground">{authIsLoading ? "Verificando sesión..." : "Cargando rifas disponibles..."}</p>
       </div>
     );
   }
-  
-  // 2. Handle loading of page-specific data (raffles)
-  // This runs if authIsLoading is false, regardless of isLoggedIn status.
-  if (pageIsLoading) { 
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)]">
-        <Loader2 className="animate-spin h-12 w-12 text-primary mx-auto mb-4" />
-        <p className="text-muted-foreground">Cargando rifas disponibles...</p>
-      </div>
-    );
-  }
-  
-  // Filter for active raffles for public display
-  const activeRaffles = allRaffles
-    .filter(raffle => raffle.status === 'active')
-    .sort((a, b) => new Date(a.drawDate).getTime() - new Date(b.drawDate).getTime());
 
-  
   return (
     <div>
       <div className="flex flex-col sm:flex-row items-center justify-between mb-4 sm:mb-6 gap-3 sm:gap-4">
         <SectionTitle className="mb-0 flex-grow border-b-0 pb-0">Rifas Disponibles</SectionTitle>
-        {/* Search input removed */}
         {isLoggedIn && (user?.role === 'admin' || user?.role === 'founder') && (
           <Dialog open={isCreateRaffleDialogOpen} onOpenChange={setIsCreateRaffleDialogOpen}>
             <DialogTrigger asChild>
@@ -163,7 +141,7 @@ export default function HomePage() {
         )}
       </div>
 
-      {isLoggedIn && user && ( // Show welcome message only if logged in
+      {isLoggedIn && user && (
         <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-secondary/30 rounded-lg shadow">
           <p className="text-sm sm:text-base font-medium text-foreground">
             ¡Bienvenido de nuevo, <span className="font-bold text-primary">{user.username}</span>!
@@ -177,15 +155,15 @@ export default function HomePage() {
         </div>
       )}
       
-      {activeRaffles.length > 0 ? (
+      {raffles.length > 0 ? (
         <div className="flex flex-col items-center gap-4 sm:gap-6 md:grid md:grid-cols-2 lg:grid-cols-3">
-          {activeRaffles.map((raffle) => {
+          {raffles.map((raffle) => {
             const creatorProfile = raffle.creatorUsername ? creatorProfiles[raffle.creatorUsername] : undefined;
             return (
               <RaffleCard
                 key={raffle.id}
                 raffle={raffle}
-                currentUser={user} // Pass current user (can be null if not logged in)
+                currentUser={user}
                 onDeleteRaffle={handleDeleteRaffle}
                 creatorProfile={creatorProfile}
                 onViewProfile={handleViewProfile}
@@ -206,6 +184,7 @@ export default function HomePage() {
           </p>
         </div>
       )}
+      
       <UserProfileDialog
         userProfile={selectedCreatorProfile}
         isOpen={isProfileDialogOpen}
