@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -112,6 +113,7 @@ export default function RaffleDetailsPage() {
 
   const handleShare = async () => {
     if (!raffle) return;
+    const currencySymbol = raffle.currency === 'Bs' ? 'Bs' : '$';
 
     const raffleUrl = `${window.location.origin}/raffles/${raffle.id}`;
     const shareTitle = `¡Participa en la rifa "${raffle.name}"!`;
@@ -121,7 +123,7 @@ export default function RaffleDetailsPage() {
     
     const newShareText = `🎉 ¡Participa ya, Rifa activa!\n` +
                          `🎁 ${firstPrize}\n` +
-                         `🎫 $${price} | 📅 Sorteo: ${drawDate}\n\n` +
+                         `🎫 ${currencySymbol}${price} | 📅 Sorteo: ${drawDate}\n\n` +
                          `Entra en el Link y participa 👉 ${raffleUrl}`;
 
     const shareData = {
@@ -184,6 +186,7 @@ export default function RaffleDetailsPage() {
   const drawDateObj = new Date(raffle.drawDate + 'T00:00:00Z');
   const formattedDrawDate = drawDateObj.toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
   
+  const currencySymbol = raffle.currency === 'Bs' ? 'Bs' : '$';
 
   return (
     <div className="space-y-3 sm:space-y-4">
@@ -237,7 +240,7 @@ export default function RaffleDetailsPage() {
           <div className="grid grid-cols-2 gap-x-1.5 gap-y-1 text-[0.7rem] sm:text-xs">
             <div className="flex items-center">
               <DollarSign className="mr-1 h-3 w-3 sm:h-3.5 sm:w-3.5 text-accent" />
-              Precio: <strong className="ml-1">$${raffle.pricePerTicket.toFixed(2)}</strong>
+              Precio: <strong className="ml-1">{currencySymbol}{raffle.pricePerTicket.toFixed(2)}</strong>
             </div>
             <div className="flex items-center">
               <CalendarDays className="mr-1 h-3 w-3 sm:h-3.5 sm:w-3.5 text-accent" />
@@ -284,6 +287,7 @@ export default function RaffleDetailsPage() {
                     totalNumbers={raffle.totalNumbers}
                     soldNumbers={effectiveSoldNumbers}
                     pricePerTicket={raffle.pricePerTicket}
+                    currency={raffle.currency || 'USD'}
                     onSelectionChange={handleSelectionChange}
                   />
                   {selectedNumbers.length > 0 && raffle && raffle.id && raffle.name && (

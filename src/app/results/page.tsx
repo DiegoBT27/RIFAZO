@@ -53,7 +53,7 @@ export default function ResultsPage() {
   }
   
   return (
-    <div>
+    <div className="flex flex-col min-h-[calc(100vh-350px)]">
       <SectionTitle className="mb-[30px]">Resultados de Sorteos Anteriores</SectionTitle>
       {results.length > 0 ? (
         <div className="space-y-4">

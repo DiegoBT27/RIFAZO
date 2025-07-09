@@ -197,7 +197,8 @@ export default function MyRafflesPage() {
             const canDeleteRaffle = 
               (user?.role === 'founder') || 
               (user?.role === 'admin' && raffle.creatorUsername === user?.username && raffle.status !== 'completed');
-
+              
+            const currencySymbol = raffle.currency === 'Bs' ? 'Bs' : '$';
 
             return (
             <Card key={raffle.id} className="shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col">
@@ -208,7 +209,7 @@ export default function MyRafflesPage() {
                 </div>
                 <CardDescription className="text-xs">
                   Sorteo: {drawDateObj.toLocaleDateString('es-VE', { year: 'numeric', month: 'long', day: 'numeric' })} | 
-                  Precio: ${raffle.pricePerTicket}
+                  Precio: {currencySymbol}{raffle.pricePerTicket}
                 </CardDescription>
                  {user?.role === 'founder' && raffle.creatorUsername && (
                     <CardDescription className="text-xs italic pt-0.5">
@@ -319,5 +320,3 @@ export default function MyRafflesPage() {
     </div>
   );
 }
-
-    

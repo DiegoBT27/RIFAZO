@@ -10,6 +10,7 @@ interface NumberSelectorProps {
   totalNumbers: number;
   soldNumbers: number[];
   pricePerTicket: number;
+  currency: 'USD' | 'Bs';
   onSelectionChange: (selected: number[]) => void;
 }
 
@@ -17,6 +18,7 @@ export default function NumberSelector({
   totalNumbers,
   soldNumbers,
   pricePerTicket,
+  currency,
   onSelectionChange,
 }: NumberSelectorProps) {
   const [selectedNumbers, setSelectedNumbers] = useState<number[]>([]);
@@ -31,6 +33,8 @@ export default function NumberSelector({
     setSelectedNumbers(newSelection);
     onSelectionChange(newSelection);
   };
+  
+  const currencySymbol = currency === 'Bs' ? 'Bs' : '$';
 
   const numbersArray = Array.from({ length: totalNumbers }, (_, i) => i + 1);
 
@@ -67,7 +71,7 @@ export default function NumberSelector({
       {selectedNumbers.length > 0 && (
         <div className="mt-2 sm:mt-2.5 p-2 sm:p-2.5 bg-secondary rounded-md shadow">
           <p className="font-medium text-[0.7rem] sm:text-xs">Números seleccionados: {selectedNumbers.map(n => String(n)).join(', ')}</p>
-          <p className="font-semibold text-xs sm:text-sm text-destructive">Total a pagar: ${selectedNumbers.length * pricePerTicket}</p>
+          <p className="font-semibold text-xs sm:text-sm text-destructive">Total a pagar: {currencySymbol}{selectedNumbers.length * pricePerTicket}</p>
         </div>
       )}
     </div>

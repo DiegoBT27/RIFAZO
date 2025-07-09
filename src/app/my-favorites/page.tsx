@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -135,7 +136,7 @@ export default function MyFavoritesPage() {
   }
 
   return (
-    <div>
+    <div className="flex flex-col min-h-[calc(100vh-350px)]">
       <SectionTitle>Mis Rifas Favoritas</SectionTitle>
       {favoriteRaffles.length > 0 ? (
         <div className="flex flex-col items-center gap-4 sm:gap-6 md:grid md:grid-cols-2 lg:grid-cols-3">

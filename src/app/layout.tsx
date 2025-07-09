@@ -25,11 +25,11 @@ export default function RootLayout({
   return (
     <html lang="es" suppressHydrationWarning>
       <head />
-      <body className={cn('min-h-screen bg-background font-sans antialiased', inter.variable)}>
+      <body className={cn('min-h-screen bg-background font-sans antialiased flex flex-col', inter.variable)}>
         <ThemeProvider>
           <AuthProvider>
             <Header />
-            <main className="flex-grow container mx-auto px-4 pt-[100px] pb-8">
+            <main className="flex-grow container mx-auto px-4 pt-[100px] pb-8 max-w-5xl">
               {children}
             </main>
             <Footer />

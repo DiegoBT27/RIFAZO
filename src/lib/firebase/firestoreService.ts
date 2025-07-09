@@ -845,9 +845,33 @@ export const getParticipationsByUsername = async (username: string): Promise<Par
 
 
 export const addParticipation = async (participationData: Omit<Participation, 'id'>): Promise<Participation> => {
-  const docRef = await addDoc(participationsCollection, participationData);
-  const savedParticipation = { id: docRef.id, ...participationData } as Participation;
-  return savedParticipation;
+  const raffleDocRef = doc(db, 'raffles', participationData.raffleId);
+
+  return await runTransaction(db, async (transaction) => {
+    // 1. Get current state of the raffle
+    const raffleDoc = await transaction.get(raffleDocRef);
+    if (!raffleDoc.exists()) {
+      throw new Error("La rifa ya no está disponible.");
+    }
+    
+    // 2. Check if the selected numbers are still available
+    const participationsQuery = query(participationsCollection, where('raffleId', '==', participationData.raffleId));
+    const participationsSnapshot = await getDocs(participationsQuery);
+    const existingNumbers = participationsSnapshot.docs
+      .flatMap(doc => (doc.data() as Participation).numbers);
+      
+    const conflictNumber = participationData.numbers.find(num => existingNumbers.includes(num));
+    if (conflictNumber) {
+      throw new Error(`El número ${conflictNumber} ya no está disponible. Por favor, selecciona otro.`);
+    }
+
+    // 3. If all numbers are available, create the new participation document
+    const newParticipationRef = doc(collection(db, 'participations'));
+    transaction.set(newParticipationRef, participationData);
+    
+    // 4. Return the new participation object with its ID
+    return { id: newParticipationRef.id, ...participationData };
+  });
 };
 
 export const updateParticipation = async (participationId: string, participationData: Partial<Participation>): Promise<void> => {

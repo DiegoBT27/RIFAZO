@@ -31,6 +31,7 @@ const FALLBACK_ADMIN_WHATSAPP_NUMBER = "584141135956";
 
 
 const generateTicketContent = (participation: Participation, raffle: Raffle, totalAmount: number): string => {
+  const currencySymbol = raffle.currency === 'Bs' ? 'Bs' : '$';
   return `
 RIFAZO - Comprobante de Participación
 -------------------------------------
@@ -42,7 +43,7 @@ Cédula: ${participation.participantIdCard}
 Teléfono: ${participation.participantPhone}
 Números Seleccionados: ${participation.numbers.join(', ')}
 Fecha de Compra: ${new Date(participation.purchaseDate).toLocaleString('es-VE')}
-Total Pagado (a coordinar): $${totalAmount.toFixed(2)}
+Total a pagar (a coordinar): ${currencySymbol}${totalAmount.toFixed(2)}
 ID de Participación: ${participation.id}
 Estado del Pago: ${participation.paymentStatus}
 Notas: ${participation.paymentNotes || 'N/A'}
@@ -92,6 +93,7 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
 
   const selectedNumbersCount = selectedNumbers.length;
   const totalAmount = selectedNumbersCount * pricePerTicket;
+  const currencySymbol = raffle.currency === 'Bs' ? 'Bs' : '$';
 
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -111,25 +113,6 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
     }
 
     try {
-      // --- Just-in-Time Validation ---
-      const latestParticipations = await getParticipationsByRaffleId(raffle.id);
-      const soldAndPendingNumbers = latestParticipations
-          .filter(p => p.paymentStatus !== 'rejected')
-          .flatMap(p => p.numbers);
-      
-      const conflictNumber = selectedNumbers.find(n => soldAndPendingNumbers.includes(n));
-
-      if (conflictNumber) {
-          toast({
-              title: "Número no disponible",
-              description: `El número ${conflictNumber} acaba de ser tomado. Por favor, selecciona otro.`,
-              variant: "destructive",
-          });
-          onPaymentSuccess(); // This will trigger a re-fetch of numbers in the parent
-          setIsSubmitting(false);
-          return;
-      }
-
       const newParticipationData: Omit<Participation, 'id'> = {
         raffleId: raffle.id,
         raffleName: raffle.name,
@@ -145,6 +128,7 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
         paymentNotes: notes,
       };
 
+      // This now uses a transaction and will throw an error if a number is taken
       const savedParticipation = await addParticipation(newParticipationData);
       
       onPaymentSuccess();
@@ -171,7 +155,7 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
 🆔 Cédula: ${participantIdCard}
 📞 Teléfono: ${participantPhone}
 🎟️ Número(s) seleccionado(s): ${selectedNumbers.join(', ')}
-💰 Total a pagar: $${totalAmount.toFixed(2)}
+💰 Total a pagar: ${currencySymbol}${totalAmount.toFixed(2)}
 📝 Notas adicionales: ${notes || 'Ninguna'}
 
 💬 Quedo atento(a) a los datos de los métodos de pago seleccionados para completar mi participación.
@@ -190,9 +174,18 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
       setParticipantIdCard('');
       setParticipantPhone('');
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("[PaymentUploadForm] Error in handleSubmit's try block:", error);
-      toast({ title: "Error al Procesar", description: "No se pudo registrar tu participación. Intenta de nuevo.", variant: "destructive" });
+      if (error.message.includes("ya no está disponible")) {
+         toast({
+              title: "Número no disponible",
+              description: error.message,
+              variant: "destructive",
+          });
+          onPaymentSuccess(); // Refresh numbers
+      } else {
+         toast({ title: "Error al Procesar", description: "No se pudo registrar tu participación. Intenta de nuevo.", variant: "destructive" });
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -255,7 +248,7 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
          Al hacer clic en 'Participar', se abrirá WhatsApp para que envíes tu comprobante de pago al organizador ({raffle.creatorUsername || 'RIFAZO General'}) y coordines la confirmación. Se descargará un archivo de texto con los detalles de tu participación.
       </p>
       {selectedNumbersCount > 0 && (
-         <p className="text-xs text-center text-muted-foreground -mt-0.5">Total a pagar (a coordinar con organizador): <span className="font-bold text-foreground">${totalAmount.toFixed(2)}</span></p>
+         <p className="text-xs text-center text-muted-foreground -mt-0.5">Total a pagar (a coordinar con organizador): <span className="font-bold text-foreground">{currencySymbol}{totalAmount.toFixed(2)}</span></p>
       )}
     </form>
   );

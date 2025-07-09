@@ -66,6 +66,7 @@ const createEditRaffleFormSchema = (planMaxTickets: number | Infinity, planDispl
   image: z.string().optional(),
   prizes: z.array(prizeSchema).min(1, { message: "Debes definir al menos un premio." }).max(planAllowsMultiplePrizes ? 3 : 1, { message: `Tu plan solo permite ${planAllowsMultiplePrizes ? '3' : '1'} premio(s).` }),
   pricePerTicket: z.coerce.number().positive({ message: "El precio debe ser un número positivo." }),
+  currency: z.enum(['USD', 'Bs'], { required_error: "Debe seleccionar una moneda." }),
   totalNumbers: z.coerce.number().int().min(10, { message: "Debe haber al menos 10 números." }),
   drawDate: z.date({ required_error: "La fecha del sorteo es obligatoria."}),
   isScheduled: z.boolean().optional(),
@@ -225,6 +226,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
         image: raffle.image || '',
         prizes: (raffle.prizes && raffle.prizes.length > 0) ? raffle.prizes : [{ description: '', lotteryName: null, drawTime: 'unspecified_time' }],
         pricePerTicket: raffle.pricePerTicket,
+        currency: raffle.currency || 'USD',
         totalNumbers: raffle.totalNumbers,
         drawDate: parse(raffle.drawDate, 'yyyy-MM-dd', new Date()),
         isScheduled: !!raffle.publicationDate,
@@ -242,6 +244,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
 
   const selectedPaymentMethodIds = watch("selectedPaymentMethodIds");
   const isScheduled = watch("isScheduled");
+  const selectedCurrency = watch("currency");
 
   const handleImageUpload = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -325,6 +328,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
       image: finalImage,
       prizes: data.prizes,
       pricePerTicket: data.pricePerTicket,
+      currency: data.currency,
       totalNumbers: data.totalNumbers,
       drawDate: format(data.drawDate, 'yyyy-MM-dd'),
       publicationDate: publicationDateISO,
@@ -382,6 +386,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
         ...raffle,
         ...raffleDataForDb,
         id: data.id,
+        currency: raffleDataForDb.currency || 'USD',
         prizes: raffleDataForDb.prizes || [],
         creatorUsername: raffle.creatorUsername,
         soldTicketsCount: raffle.soldTicketsCount,
@@ -616,9 +621,27 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <div>
-            <Label htmlFor={`${formPrefix}pricePerTicket`} className="text-xs sm:text-sm">Precio por Boleto (USD)</Label>
-            <Input id={`${formPrefix}pricePerTicket`} type="number" step="0.01" {...register("pricePerTicket")} placeholder="Ej: 5.00" className="h-9 text-xs sm:text-sm"/>
+            <Label htmlFor={`${formPrefix}pricePerTicket`} className="text-xs sm:text-sm">Precio por Boleto</Label>
+            <div className="flex items-center gap-2">
+                <Controller
+                    name="currency"
+                    control={control}
+                    render={({ field }) => (
+                        <Select onValueChange={field.onChange} value={field.value}>
+                            <SelectTrigger id={`${formPrefix}currency`} className="w-[80px] h-9 text-xs">
+                                <SelectValue placeholder="Moneda" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="USD">$ USD</SelectItem>
+                                <SelectItem value="Bs">Bs</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    )}
+                />
+                <Input id={`${formPrefix}pricePerTicket`} type="number" step="0.01" {...register("pricePerTicket")} placeholder="Ej: 5.00" className="h-9 text-xs sm:text-sm flex-1"/>
+            </div>
             {errors.pricePerTicket && <p className="text-xs text-destructive mt-1">{errors.pricePerTicket.message}</p>}
+            {errors.currency && <p className="text-xs text-destructive mt-1">{errors.currency.message}</p>}
           </div>
           <div>
             <Label htmlFor={`${formPrefix}totalNumbers`} className="text-xs sm:text-sm">Cantidad Total de Números</Label>

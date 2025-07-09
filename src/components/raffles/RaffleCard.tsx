@@ -1,3 +1,4 @@
+
 'use client';
 
 import Link from 'next/link';
@@ -45,6 +46,8 @@ const RaffleCard = React.memo(function RaffleCard({ raffle, currentUser, onDelet
   const canViewProfile = creatorProfile && onViewProfile;
 
   const drawDateObj = new Date(raffle.drawDate + 'T00:00:00Z');
+  
+  const currencySymbol = raffle.currency === 'Bs' ? 'Bs' : '$';
 
   const handleShare = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
@@ -60,7 +63,7 @@ const RaffleCard = React.memo(function RaffleCard({ raffle, currentUser, onDelet
     
     const newShareText = `🎉 ¡Participa ya, Rifa activa!\n` +
                          `🎁 ${firstPrize}\n` +
-                         `🎫 $${price} | 📅 Sorteo: ${drawDate}\n\n` +
+                         `🎫 ${currencySymbol}${price} | 📅 Sorteo: ${drawDate}\n\n` +
                          `Entra en el Link y participa 👉 ${raffleUrl}`;
 
     const shareData = {
@@ -129,7 +132,7 @@ const RaffleCard = React.memo(function RaffleCard({ raffle, currentUser, onDelet
         <div className="space-y-0.5 sm:space-y-1 text-xs">
           <div className="flex items-center">
             <DollarSign className="h-3.5 w-3.5 mr-1.5 text-accent" />
-            Precio: $${raffle.pricePerTicket.toFixed(2)}
+            Precio: {currencySymbol}{raffle.pricePerTicket.toFixed(2)}
           </div>
           <div className="flex items-center">
             <CalendarDays className="h-3.5 w-3.5 mr-1.5 text-accent" />
