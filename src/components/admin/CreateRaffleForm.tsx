@@ -68,6 +68,8 @@ const createRaffleFormSchema = (planMaxTickets: number | Infinity, planDisplayNa
   pricePerTicket: z.coerce.number().positive({ message: "El precio debe ser un número positivo." }),
   currency: z.enum(['USD', 'Bs'], { required_error: "Debe seleccionar una moneda." }),
   totalNumbers: z.coerce.number().int().min(10, { message: "Debe haber al menos 10 números." }), 
+  minTicketsPerPurchase: z.coerce.number().int().min(1, "El mínimo debe ser al menos 1.").optional().nullable(),
+  maxTicketsPerPurchase: z.coerce.number().int().min(1, "El máximo debe ser al menos 1.").optional().nullable(),
   drawDate: z.date({ required_error: "La fecha del sorteo es obligatoria."}),
   isScheduled: z.boolean().optional(),
   publicationDate: z.date().optional(),
@@ -82,6 +84,13 @@ const createRaffleFormSchema = (planMaxTickets: number | Infinity, planDisplayNa
     otro_description: z.string().optional(), 
   }).optional(),
 }).superRefine((data, ctx) => {
+  if (data.minTicketsPerPurchase && data.maxTicketsPerPurchase && data.minTicketsPerPurchase > data.maxTicketsPerPurchase) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "El mínimo no puede ser mayor que el máximo.",
+      path: ["minTicketsPerPurchase"],
+    });
+  }
   if (data.isScheduled) {
     if (!data.publicationDate) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "La fecha de publicación es requerida si programas la rifa.", path: ["publicationDate"] });
@@ -281,6 +290,8 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
       pricePerTicket: data.pricePerTicket,
       currency: data.currency,
       totalNumbers: data.totalNumbers,
+      minTicketsPerPurchase: data.minTicketsPerPurchase || null,
+      maxTicketsPerPurchase: data.maxTicketsPerPurchase || null,
       drawDate: format(data.drawDate, 'yyyy-MM-dd'),
       publicationDate: publicationDateISO,
       status: status,
@@ -547,6 +558,36 @@ export default function CreateRaffleForm({ onSuccess }: CreateRaffleFormProps) {
             <Label htmlFor={`${formPrefix}totalNumbers`} className="text-xs sm:text-sm">Cantidad Total de Números</Label>
             <Input id={`${formPrefix}totalNumbers`} type="number" {...register("totalNumbers")} placeholder="Ej: 100" className="h-9 text-xs sm:text-sm"/>
             {errors.totalNumbers && <p className="text-xs text-destructive mt-1">{errors.totalNumbers.message}</p>}
+          </div>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-3">
+          <Label className="text-xs sm:text-sm">Límites de Compra (Opcional)</Label>
+           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <div>
+              <Label htmlFor={`${formPrefix}minTickets`} className="text-xs text-muted-foreground">Mínimo de boletos por compra</Label>
+              <Input
+                id={`${formPrefix}minTickets`}
+                type="number"
+                {...register("minTicketsPerPurchase")}
+                placeholder="Ej: 5"
+                className="h-9 text-xs sm:text-sm"
+              />
+              {errors.minTicketsPerPurchase && <p className="text-xs text-destructive mt-1">{errors.minTicketsPerPurchase.message}</p>}
+            </div>
+            <div>
+              <Label htmlFor={`${formPrefix}maxTickets`} className="text-xs text-muted-foreground">Máximo de boletos por compra</Label>
+              <Input
+                id={`${formPrefix}maxTickets`}
+                type="number"
+                {...register("maxTicketsPerPurchase")}
+                placeholder="Ej: 20"
+                className="h-9 text-xs sm:text-sm"
+              />
+              {errors.maxTicketsPerPurchase && <p className="text-xs text-destructive mt-1">{errors.maxTicketsPerPurchase.message}</p>}
+            </div>
           </div>
         </div>
 

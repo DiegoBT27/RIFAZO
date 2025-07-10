@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { AlertTriangle, Hash, Loader2, MessageSquare, ImagePlus, UploadCloud } from 'lucide-react';
+import { AlertTriangle, Hash, Loader2, MessageSquare, ImagePlus, UploadCloud, TriangleAlert } from 'lucide-react';
 import { Phone as PhoneIcon } from 'lucide-react';
 import { User } from 'lucide-react';
 import type { Participation, Raffle } from '@/types';
@@ -95,6 +95,9 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
   const totalAmount = selectedNumbersCount * pricePerTicket;
   const currencySymbol = raffle.currency === 'Bs' ? 'Bs' : '$';
 
+  const isMinTicketsMet = !raffle.minTicketsPerPurchase || selectedNumbersCount >= raffle.minTicketsPerPurchase;
+  const isMaxTicketsMet = !raffle.maxTicketsPerPurchase || selectedNumbersCount <= raffle.maxTicketsPerPurchase;
+  const isSelectionValid = isMinTicketsMet && isMaxTicketsMet;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -110,6 +113,12 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
       toast({ title: "Error de Formulario", description: "Por favor, completa todos los campos requeridos.", variant: "destructive" });
       setIsSubmitting(false);
       return;
+    }
+
+    if (!isSelectionValid) {
+       toast({ title: "Error de Límites", description: "La cantidad de boletos seleccionados no cumple con los límites de la rifa.", variant: "destructive" });
+       setIsSubmitting(false);
+       return;
     }
 
     try {
@@ -240,7 +249,7 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
         <Textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ej: Banco desde el que pagarás, preferencia de contacto, etc." disabled={isSubmitting} className="text-xs min-h-[60px]" rows={2}/>
       </div>
 
-      <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground text-sm h-9 sm:h-10" disabled={selectedNumbersCount === 0 || !participantName || !participantLastName || !participantIdCard || !participantPhone || isSubmitting}>
+      <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground text-sm h-9 sm:h-10" disabled={selectedNumbersCount === 0 || !participantName || !participantLastName || !participantIdCard || !participantPhone || isSubmitting || !isSelectionValid}>
         {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageSquare className="mr-2 h-4 w-4" />}
         {isSubmitting ? 'Procesando...' : `Participar`}
       </Button>

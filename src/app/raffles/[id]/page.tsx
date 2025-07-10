@@ -289,6 +289,8 @@ export default function RaffleDetailsPage() {
                     pricePerTicket={raffle.pricePerTicket}
                     currency={raffle.currency || 'USD'}
                     onSelectionChange={handleSelectionChange}
+                    minTickets={raffle.minTicketsPerPurchase}
+                    maxTickets={raffle.maxTicketsPerPurchase}
                   />
                   {selectedNumbers.length > 0 && raffle && raffle.id && raffle.name && (
                     <motion.div

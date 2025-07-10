@@ -23,10 +23,12 @@ export interface Raffle {
   drawDate: string; // YYYY-MM-DD format
   publicationDate?: string | null; // ISO Date string for scheduled publication
   pricePerTicket: number;
-  currency: 'USD' | 'Bs'; // New field for currency
+  currency: 'USD' | 'Bs';
   totalNumbers: number;
   soldTicketsCount: number;
   confirmedPaymentsCount: number; // New field for data integrity
+  minTicketsPerPurchase?: number | null; // Optional minimum tickets
+  maxTicketsPerPurchase?: number | null; // Optional maximum tickets
   prizes: Prize[];
   acceptedPaymentMethods?: AcceptedPaymentMethod[];
   creatorUsername?: string;

@@ -1,10 +1,12 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { motion } from 'framer-motion'; 
+import { motion, AnimatePresence } from 'framer-motion';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { TriangleAlert } from 'lucide-react';
 
 interface NumberSelectorProps {
   totalNumbers: number;
@@ -12,6 +14,8 @@ interface NumberSelectorProps {
   pricePerTicket: number;
   currency: 'USD' | 'Bs';
   onSelectionChange: (selected: number[]) => void;
+  minTickets?: number | null;
+  maxTickets?: number | null;
 }
 
 export default function NumberSelector({
@@ -20,8 +24,26 @@ export default function NumberSelector({
   pricePerTicket,
   currency,
   onSelectionChange,
+  minTickets,
+  maxTickets,
 }: NumberSelectorProps) {
   const [selectedNumbers, setSelectedNumbers] = useState<number[]>([]);
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const selectionCount = selectedNumbers.length;
+    if (selectionCount === 0) {
+      setValidationError(null);
+      return;
+    }
+    if (minTickets && selectionCount < minTickets) {
+      setValidationError(`Debes seleccionar al menos ${minTickets} boletos.`);
+    } else if (maxTickets && selectionCount > maxTickets) {
+      setValidationError(`No puedes seleccionar más de ${maxTickets} boletos.`);
+    } else {
+      setValidationError(null);
+    }
+  }, [selectedNumbers, minTickets, maxTickets]);
 
   const handleNumberClick = (number: number) => {
     if (soldNumbers.includes(number)) return;
@@ -41,6 +63,17 @@ export default function NumberSelector({
   return (
     <div>
       <h3 className="text-sm sm:text-base font-headline font-semibold mb-2 sm:mb-2.5">Selecciona tus números:</h3>
+      
+      {(minTickets || maxTickets) && (
+        <Alert variant="default" className="mb-3 text-xs p-2 bg-primary/5 border-primary/20 text-primary">
+          <AlertDescription>
+            Límites de esta rifa:
+            {minTickets && <span className="block">- Compra mínima: {minTickets} boleto(s).</span>}
+            {maxTickets && <span className="block">- Compra máxima: {maxTickets} boleto(s).</span>}
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-0.5 sm:gap-1 mb-2 sm:mb-2.5">
         {numbersArray.map((number) => {
           const isSold = soldNumbers.includes(number);
@@ -74,6 +107,21 @@ export default function NumberSelector({
           <p className="font-semibold text-xs sm:text-sm text-destructive">Total a pagar: {currencySymbol}{selectedNumbers.length * pricePerTicket}</p>
         </div>
       )}
+       <AnimatePresence>
+        {validationError && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+            animate={{ opacity: 1, height: 'auto', marginTop: '8px' }}
+            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <Alert variant="destructive" className="p-2 text-xs">
+              <TriangleAlert className="h-4 w-4" />
+              <AlertDescription>{validationError}</AlertDescription>
+            </Alert>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
