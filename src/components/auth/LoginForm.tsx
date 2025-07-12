@@ -23,6 +23,7 @@ import {
   DialogClose,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '../ui/separator';
 
 const loginSchema = z.object({
   username: z.string().min(1, { message: "El nombre de usuario es requerido." }),
@@ -121,9 +122,6 @@ export default function LoginForm() {
       setIsFormLoading(false);
     }
   };
-  
-  const adminInterestMessage = encodeURIComponent("¡Hola! Estoy interesado/a en ser organizador/administrador en RIFAZO.");
-  const whatsappAdminUrl = `https://wa.me/${ADMIN_WHATSAPP_NUMBER}?text=${adminInterestMessage}`;
   
   return (
     <>
@@ -240,16 +238,6 @@ export default function LoginForm() {
             <Link href="/register" className="text-primary hover:underline font-medium">
               Regístrate aquí
             </Link>
-          </div>
-          <div>
-            <a
-              href={whatsappAdminUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-accent hover:underline font-medium"
-            >
-              ¿Quieres ser organizador/administrador? Contáctanos
-            </a>
           </div>
         </CardFooter>
       </Card>

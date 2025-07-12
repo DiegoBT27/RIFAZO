@@ -20,7 +20,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { Loader2, UserPlus, Trash2, Users, AlertCircle, KeyRound, Edit3, UserCog, Info, Building, UserX, UserCheck, ShieldAlert, Unlock } from 'lucide-react';
+import { Loader2, UserPlus, Trash2, Users, AlertCircle, KeyRound, Edit3, UserCog, Info, Building, UserX, UserCheck, ShieldAlert, Unlock, Hourglass, CheckCircle } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
@@ -129,7 +129,7 @@ const editUserFormSchema = z.object({
   username: z.string().min(3, "El nombre de usuario debe tener al menos 3 caracteres.").regex(/^[a-zA-Z0-9_]+$/, "Solo letras, números y guion bajo."),
   password: z.string().optional(),
   confirmPassword: z.string().optional(),
-  role: z.enum(['user', 'admin', 'founder'], { required_error: "El rol es obligatorio." }),
+  role: z.enum(['user', 'admin', 'founder', 'pending_approval'], { required_error: "El rol es obligatorio." }),
   organizerType: z.enum(['individual', 'company']).optional(),
   fullName: z.string().optional(),
   companyName: z.string().optional(),
@@ -249,7 +249,8 @@ export default function UserManagementClient() {
     setIsLoading(true);
     try {
       const loadedUsers = await getUsers();
-      setUsers(loadedUsers.sort((a, b) => a.username.localeCompare(b.username)));
+      const roleOrder = { 'pending_approval': 1, 'founder': 2, 'admin': 3, 'user': 4 };
+      setUsers(loadedUsers.sort((a, b) => (roleOrder[a.role] || 99) - (roleOrder[b.role] || 99) || a.username.localeCompare(b.username)));
     } catch (error) {
       toast({ title: "Error", description: "No se pudieron cargar los usuarios.", variant: "destructive" });
       setUsers([]);
@@ -268,11 +269,11 @@ export default function UserManagementClient() {
     formIsSubmittingFlag: boolean,
     formPrefix: string = '',
     isDisabled: boolean = false,
-    currentRole: 'user' | 'admin' | 'founder' | undefined,
+    currentRole: 'user' | 'admin' | 'founder' | 'pending_approval' | undefined,
     currentOrganizerType: 'individual' | 'company' | undefined,
     formControl: any
   ) => {
-    if (currentRole !== 'admin' && currentRole !== 'founder') return null;
+    if (currentRole !== 'admin' && currentRole !== 'founder' && currentRole !== 'pending_approval') return null;
 
     return (
     <>
@@ -629,6 +630,28 @@ export default function UserManagementClient() {
     }
   };
 
+  const handleActivateUser = async (userToActivate: ManagedUser) => {
+    if (!currentUser?.username) {
+      toast({ title: "Error de Autenticación", description: "No se pudo identificar al administrador actual.", variant: "destructive" });
+      return;
+    }
+    if (userToActivate.role !== 'pending_approval') return;
+
+    try {
+        await updateUser(userToActivate.id, { role: 'admin' });
+        toast({
+            title: "Usuario Activado",
+            description: `La cuenta de ${userToActivate.username} ha sido activada como administrador.`,
+        });
+        fetchUsersFromDB(); // Refresh the user list
+    } catch (error: any) {
+        toast({
+            title: "Error de Activación",
+            description: `No se pudo activar la cuenta: ${error.message}`,
+            variant: "destructive",
+        });
+    }
+  };
 
   const handleOpenEditDialog = (userToEdit: ManagedUser) => {
     setEditingUser(userToEdit);
@@ -638,7 +661,7 @@ export default function UserManagementClient() {
       role: userToEdit.role,
       password: '', 
       confirmPassword: '',
-      organizerType: userToEdit.organizerType || (userToEdit.role === 'admin' || userToEdit.role === 'founder' ? 'individual' : undefined),
+      organizerType: userToEdit.organizerType || ((userToEdit.role === 'admin' || userToEdit.role === 'founder' || userToEdit.role === 'pending_approval') ? 'individual' : undefined),
       fullName: userToEdit.fullName || '',
       companyName: userToEdit.companyName || '',
       rif: userToEdit.rif || '',
@@ -782,7 +805,7 @@ export default function UserManagementClient() {
             <Users className="mr-2 h-6 w-6 text-primary" /> USUARIOS
           </CardTitle>
           <CardDescription>
-            Lista de usuarios registrados
+            Lista de usuarios registrados. Las solicitudes pendientes aparecen primero.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -790,16 +813,28 @@ export default function UserManagementClient() {
             <div className="space-y-3">
               {users.map((userEntry) => {
                 const isLocked = !!(userEntry.lockoutUntil && new Date(userEntry.lockoutUntil) > new Date());
+                const isPending = userEntry.role === 'pending_approval';
+
+                let roleDisplay: React.ReactNode = userEntry.role;
+                let roleColorClass = '';
+                if (userEntry.role === 'admin') roleColorClass = 'text-primary';
+                if (userEntry.role === 'founder') roleColorClass = 'text-accent';
+                if (isPending) roleColorClass = 'text-yellow-600';
+
                 return (
-                <Card key={userEntry.id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-center bg-secondary/20">
+                <Card key={userEntry.id} className={cn("p-4 flex flex-col sm:flex-row justify-between sm:items-center bg-secondary/20", isPending && "border-yellow-500 border-2 bg-yellow-500/10")}>
                   <div className="mb-3 sm:mb-0 flex-grow">
                     <p className="font-semibold text-foreground flex items-center">
                       {userEntry.username}
-                      {userEntry.isBlocked && <UserX className="ml-2 h-4 w-4 text-destructive" title="Usuario Bloqueado Permanentemente"/>}
-                      {!userEntry.isBlocked && <UserCheck className="ml-2 h-4 w-4 text-green-600" title="Usuario Activo"/>}
+                       {isPending ? <Hourglass className="ml-2 h-4 w-4 text-yellow-600" title="Pendiente de Aprobación" />
+                        : userEntry.isBlocked ? <UserX className="ml-2 h-4 w-4 text-destructive" title="Usuario Bloqueado Permanentemente"/>
+                        : <UserCheck className="ml-2 h-4 w-4 text-green-600" title="Usuario Activo"/>
+                       }
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Rol: <span className={userEntry.role === 'admin' ? 'font-bold text-primary' : (userEntry.role === 'founder' ? 'font-bold text-accent' : '')}>{userEntry.role}</span>
+                      Rol: <span className={cn('font-bold', roleColorClass)}>
+                        {isPending ? 'Pendiente Aprobación' : userEntry.role}
+                      </span>
                       {userEntry.organizerType && ` - Tipo: ${userEntry.organizerType === 'individual' ? 'Individual' : 'Empresa'}`}
                        {userEntry.isBlocked && <Badge variant="destructive" className="ml-2 text-xs">Bloqueado</Badge>}
                        {isLocked && <Badge variant="destructive" className="ml-2 text-xs animate-pulse">Bloqueo por Intentos</Badge>}
@@ -814,7 +849,7 @@ export default function UserManagementClient() {
                         id={`block-switch-${userEntry.id}`}
                         checked={userEntry.isBlocked || false}
                         onCheckedChange={() => handleToggleBlockUser(userEntry)}
-                        disabled={userEntry.username === 'fundador'}
+                        disabled={userEntry.username === 'fundador' || isPending}
                         aria-label={userEntry.isBlocked ? "Desbloquear usuario" : "Bloquear usuario"}
                       />
                        <Label htmlFor={`block-switch-${userEntry.id}`} className="sr-only">
@@ -825,6 +860,12 @@ export default function UserManagementClient() {
                         <Button variant="outline" size="icon" className="h-8 w-8 border-yellow-500 text-yellow-600 hover:bg-yellow-100" title="Desbloquear cuenta por intentos" onClick={() => setUserToUnlock(userEntry)}>
                             <Unlock className="h-4 w-4" />
                             <span className="sr-only">Desbloquear</span>
+                        </Button>
+                    )}
+                    {isPending && (
+                       <Button variant="outline" size="icon" className="h-8 w-8 bg-green-500/10 border-green-500 text-green-600 hover:bg-green-500/20" title="Activar Usuario" onClick={() => handleActivateUser(userEntry)}>
+                            <CheckCircle className="h-4 w-4" />
+                            <span className="sr-only">Activar</span>
                         </Button>
                     )}
                     <Button
@@ -943,6 +984,7 @@ export default function UserManagementClient() {
                         <SelectValue placeholder="Selecciona un rol" />
                       </SelectTrigger>
                       <SelectContent>
+                          <SelectItem value="pending_approval">Pendiente Aprobación</SelectItem>
                           <SelectItem value="user">Usuario</SelectItem>
                           <SelectItem value="admin">Administrador</SelectItem>
                           <SelectItem value="founder" disabled={editingUser.username !== 'fundador'}>Fundador</SelectItem>
@@ -972,9 +1014,3 @@ export default function UserManagementClient() {
     </div>
   );
 }
-
-
-
-
-
-

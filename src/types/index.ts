@@ -67,33 +67,47 @@ export interface Participation {
   userHasRatedOrganizerForRaffle?: boolean; 
 }
 
+export type UserRole = 'user' | 'admin' | 'founder' | 'pending_approval';
+
 export interface ManagedUser {
   id: string;
   username: string;
-  role: 'user' | 'admin' | 'founder';
+  role: UserRole;
   password?: string;
   isBlocked?: boolean; 
   sessionId?: string | null;
   failedLoginAttempts?: number;
   lockoutUntil?: string | null;
-  
-  organizerType?: 'individual' | 'company';
-  publicAlias?: string;
+
+  // Organizer Profile Fields
+  fullName?: string;
+  companyName?: string;
+  rif?: string;
+  idCardNumber?: string;
+  email?: string;
   whatsappNumber?: string;
   locationState?: string;
   locationCity?: string;
-  email?: string;
+  idCardImageUri?: string; 
+  commercialName?: string;
+  offeredPaymentMethods?: string[];
+  publicAlias?: string;
   bio?: string;
+  organizerType?: 'individual' | 'business';
+  
+  // Agreements for Organizers
+  commitmentAgreed?: boolean;
+  guaranteeAgreed?: boolean;
+  fraudPolicyAgreed?: boolean;
+  contactAgreed?: boolean;
+  termsAgreed?: boolean;
+  infoIsTruthfulAgreed?: boolean;
+  
   adminPaymentMethodsInfo?: string;
 
-  fullName?: string;
-
-  companyName?: string;
-  rif?: string;
-
+  // Rating and Favorite fields
   averageRating?: number;
   ratingCount?: number;
-
   favoriteRaffleIds?: string[];
 
   // Plan fields
@@ -104,6 +118,7 @@ export interface ManagedUser {
   planAssignedBy?: string | null; // username of the founder who assigned the plan
   rafflesCreatedThisPeriod?: number;
 }
+
 
 export type ActivityLogActionType = 
   | 'PAYMENT_CONFIRMED' | 'PAYMENT_REJECTED' | 'PARTICIPATION_DELETED'

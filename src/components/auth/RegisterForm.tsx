@@ -25,6 +25,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '../ui/separator';
 
 const registerSchema = z.object({
   username: z.string().min(3, { message: "El nombre de usuario debe tener al menos 3 caracteres." }).regex(/^[a-zA-Z0-9_]+$/, "Solo letras, números y guion bajo."),
@@ -116,8 +117,8 @@ export default function RegisterForm() {
     <>
       <Card className="w-full max-w-md mx-auto shadow-xl">
         <CardHeader className="text-center">
-          <CardTitle className="font-headline text-3xl">Crear Cuenta</CardTitle>
-          <CardDescription>Regístrate para participar en RIFAZO</CardDescription>
+          <CardTitle className="font-headline text-3xl">Crear Cuenta de Usuario</CardTitle>
+          <CardDescription>Regístrate para participar en las rifas.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
@@ -224,11 +225,19 @@ export default function RegisterForm() {
             </Button>
           </form>
         </CardContent>
-        <CardFooter className="flex justify-center text-sm">
-          <p>¿Ya tienes una cuenta?&nbsp;</p>
-          <Link href="/login" className="text-primary hover:underline font-medium">
-            Inicia sesión aquí
-          </Link>
+        <CardFooter className="flex-col space-y-3 pt-4">
+          <div className="text-sm">
+            <span>¿Ya tienes una cuenta?&nbsp;</span>
+            <Link href="/login" className="text-primary hover:underline font-medium">
+              Inicia sesión aquí
+            </Link>
+          </div>
+          <Separator className="w-3/4" />
+           <div className="text-sm text-center">
+            <Link href="/register-organizer" className="text-accent hover:underline font-medium">
+                ¿Quieres ser organizador? Solicítalo aquí
+            </Link>
+          </div>
         </CardFooter>
       </Card>
 

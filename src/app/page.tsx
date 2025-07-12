@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -115,7 +116,10 @@ export default function HomePage() {
   return (
     <div>
       <div className="flex flex-col sm:flex-row items-center justify-between mb-4 sm:mb-6 gap-3 sm:gap-4">
-        <SectionTitle className="mb-0 flex-grow border-b-0 pb-0">Rifas Disponibles</SectionTitle>
+        <SectionTitle className="mb-0 flex-grow border-b-0 pb-0 uppercase">
+          <span className="text-primary">Rifas</span>
+          <span> Disponibles</span>
+        </SectionTitle>
         {isLoggedIn && (user?.role === 'admin' || user?.role === 'founder') && (
           <Dialog open={isCreateRaffleDialogOpen} onOpenChange={setIsCreateRaffleDialogOpen}>
             <DialogTrigger asChild>

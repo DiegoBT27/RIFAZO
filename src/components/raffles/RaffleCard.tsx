@@ -7,7 +7,7 @@ import React from 'react'; // Import React
 import type { Raffle, ManagedUser } from '@/types';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CalendarDays, Ticket, DollarSign, Users, UserCircle, Trash2, AlertTriangle, Clock, ListChecks, Info as InfoIcon, Share2, Star } from 'lucide-react';
+import { CalendarDays, Ticket, DollarSign, Users, UserCircle, Trash2, AlertTriangle, Clock, ListChecks, Info as InfoIcon, Share2, Star, Gift } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,6 +22,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
+import { Separator } from '../ui/separator';
 
 interface RaffleCardProps {
   raffle: Raffle;
@@ -122,13 +123,17 @@ const RaffleCard = React.memo(function RaffleCard({ raffle, currentUser, onDelet
       <CardContent className="flex-grow p-3 sm:p-4 pt-1.5 sm:pt-2">
         <CardTitle className="font-headline text-md sm:text-lg my-2 sm:my-2.5 line-clamp-2">{raffle.name}</CardTitle>
         <div className="space-y-1 my-2">
-            <h4 className="text-xs font-semibold text-muted-foreground">Premios:</h4>
-            <ul className="list-decimal list-inside text-xs sm:text-sm text-foreground pl-2 space-y-0.5">
+            <div className="flex items-center text-xs font-semibold text-muted-foreground">
+              <Gift className="h-4 w-4 mr-1.5 text-accent" />
+              Premios
+            </div>
+            <ul className="list-decimal list-inside text-xs sm:text-sm text-foreground pl-3 space-y-0.5">
                 {(raffle.prizes || []).map((prize, index) => (
                     <li key={index} className="line-clamp-1">{prize.description}</li>
                 ))}
             </ul>
         </div>
+        <Separator className="my-2 bg-muted-foreground/10" />
         <div className="space-y-0.5 sm:space-y-1 text-xs">
           <div className="flex items-center">
             <DollarSign className="h-3.5 w-3.5 mr-1.5 text-accent" />

@@ -71,6 +71,17 @@ export const getUserByEmail = async (email: string): Promise<ManagedUser | null>
   return { id: docData.id, ...docData.data() } as ManagedUser;
 };
 
+const getUserByField = async (fieldName: keyof ManagedUser, value: string): Promise<ManagedUser | null> => {
+  if (!value || value.trim() === '') return null;
+  const q = query(usersCollection, where(fieldName, '==', value));
+  const snapshot = await getDocs(q);
+  if (snapshot.empty) {
+    return null;
+  }
+  return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as ManagedUser;
+};
+
+
 export const getUsersByUsernames = async (usernames: string[]): Promise<ManagedUser[]> => {
   if (usernames.length === 0) return [];
   const users: ManagedUser[] = [];
@@ -92,16 +103,25 @@ export const getUsersByUsernames = async (usernames: string[]): Promise<ManagedU
 
 export const addUser = async (userData: Omit<ManagedUser, 'id'>): Promise<ManagedUser> => {
   // Server-side validation for duplicates
-  const existingUserByUsername = await getUserByUsername(userData.username);
-  if (existingUserByUsername) {
+  if (await getUserByUsername(userData.username)) {
     throw new Error("El nombre de usuario ya existe.");
   }
-  if (userData.email) {
-    const existingUserByEmail = await getUserByEmail(userData.email);
-    if (existingUserByEmail) {
-      throw new Error("El correo electrónico ya está en uso.");
-    }
+  if (userData.email && await getUserByEmail(userData.email)) {
+    throw new Error("El correo electrónico ya está en uso.");
   }
+  if (userData.idCardNumber && await getUserByField('idCardNumber', userData.idCardNumber)) {
+    throw new Error("La cédula de identidad ya está registrada.");
+  }
+  if (userData.rif && await getUserByField('rif', userData.rif)) {
+    throw new Error("El RIF ya está registrado.");
+  }
+   if (userData.publicAlias && await getUserByField('publicAlias', userData.publicAlias)) {
+    throw new Error("El alias público ya está en uso.");
+  }
+  if (userData.whatsappNumber && await getUserByField('whatsappNumber', userData.whatsappNumber)) {
+    throw new Error("El número de WhatsApp ya está registrado.");
+  }
+
 
   const dataToSave: { [key: string]: any } = {
     username: userData.username,
@@ -138,7 +158,7 @@ export const addUser = async (userData: Omit<ManagedUser, 'id'>): Promise<Manage
   const optionalFields: (keyof Omit<ManagedUser, 'id' | 'username' | 'password' | 'role' | 'isBlocked' | 'averageRating' | 'ratingCount' | 'plan' | 'planActive' | 'planStartDate' | 'planEndDate' | 'planAssignedBy' | 'rafflesCreatedThisPeriod' | 'sessionId' | 'failedLoginAttempts' | 'lockoutUntil' | 'favoriteRaffleIds'>)[] = [
     'organizerType', 'fullName', 'companyName', 'rif', 'publicAlias',
     'whatsappNumber', 'locationState', 'locationCity',
-    'email', 'bio', 'adminPaymentMethodsInfo'
+    'email', 'bio', 'adminPaymentMethodsInfo', 'idCardImageUri', 'commercialName', 'offeredPaymentMethods', 'commitmentAgreed', 'guaranteeAgreed', 'fraudPolicyAgreed', 'termsAgreed', 'infoIsTruthfulAgreed', 'finalTermsAgreed', 'digitalSignature', 'idCardNumber'
   ];
 
   optionalFields.forEach(field => {
@@ -146,12 +166,6 @@ export const addUser = async (userData: Omit<ManagedUser, 'id'>): Promise<Manage
       dataToSave[field] = userData[field];
     }
   });
-
-  if (userData.publicAlias !== undefined) {
-    dataToSave.publicAlias = userData.publicAlias;
-  } else if (dataToSave.publicAlias === undefined && dataToSave.role !== 'user' && userData.username) {
-    dataToSave.publicAlias = userData.username;
-  }
 
   const docRef = await addDoc(usersCollection, dataToSave);
   const savedUser: ManagedUser = {
@@ -177,14 +191,15 @@ export const updateUser = async (userId: string, userData: Partial<ManagedUser>)
       }
   }
   if (userData.email && userData.email !== oldUserData.email) {
-      const existingUser = await getUserByEmail(userData.email);
-      if (existingUser) {
+      const existingUserByEmail = await getUserByEmail(userData.email);
+      // Allow update if the found email belongs to the same user (can happen in some race conditions or data states)
+      if (existingUserByEmail && existingUserByEmail.id !== userId) {
           throw new Error("El correo electrónico ya está en uso.");
       }
   }
 
   // --- START: INTELLIGENT ROLE CHANGE LOGIC ---
-  const isBeingPromoted = oldUserData.role === 'user' && (userData.role === 'admin' || userData.role === 'founder');
+  const isBeingPromoted = (oldUserData.role === 'user' || oldUserData.role === 'pending_approval') && (userData.role === 'admin' || userData.role === 'founder');
   const isBeingDemoted = oldUserData.role !== 'user' && userData.role === 'user';
 
 
