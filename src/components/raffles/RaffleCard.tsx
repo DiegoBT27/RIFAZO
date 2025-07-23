@@ -109,7 +109,7 @@ const RaffleCard = React.memo(function RaffleCard({ raffle, currentUser, onDelet
   };
 
   return (
-    <Card className="flex flex-col h-full w-[21.25rem] shadow-lg hover:shadow-xl transition-shadow duration-300">
+    <Card className="flex flex-col h-full w-full shadow-lg hover:shadow-xl transition-shadow duration-300">
       <CardHeader className="p-0 relative">
         <Image
           src={raffle.image}

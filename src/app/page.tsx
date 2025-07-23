@@ -160,20 +160,22 @@ export default function HomePage() {
       )}
       
       {raffles.length > 0 ? (
-        <div className="flex flex-col items-center gap-4 sm:gap-6 md:grid md:grid-cols-2 lg:grid-cols-3">
-          {raffles.map((raffle) => {
-            const creatorProfile = raffle.creatorUsername ? creatorProfiles[raffle.creatorUsername] : undefined;
-            return (
-              <RaffleCard
-                key={raffle.id}
-                raffle={raffle}
-                currentUser={user}
-                onDeleteRaffle={handleDeleteRaffle}
-                creatorProfile={creatorProfile}
-                onViewProfile={handleViewProfile}
-              />
-            );
-          })}
+        <div className="flex justify-center">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            {raffles.map((raffle) => {
+              const creatorProfile = raffle.creatorUsername ? creatorProfiles[raffle.creatorUsername] : undefined;
+              return (
+                <RaffleCard
+                  key={raffle.id}
+                  raffle={raffle}
+                  currentUser={user}
+                  onDeleteRaffle={handleDeleteRaffle}
+                  creatorProfile={creatorProfile}
+                  onViewProfile={handleViewProfile}
+                />
+              );
+            })}
+          </div>
         </div>
       ) : (
         <div className="text-center py-8 sm:py-12 border-2 border-dashed border-muted-foreground/30 rounded-lg">
