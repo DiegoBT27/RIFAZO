@@ -12,7 +12,7 @@ import NumberSelector from '@/components/raffles/NumberSelector';
 import SectionTitle from '@/components/shared/SectionTitle';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CalendarDays, DollarSign, Gift, Ticket as TicketIcon, Info, Loader2, CreditCard, Smartphone, PackageCheck, UserCircle, LogIn, Clock, ListChecks, AlertTriangle, Share2 } from 'lucide-react';
+import { CalendarDays, DollarSign, Gift, Ticket as TicketIcon, Info, Loader2, CreditCard, Smartphone, PackageCheck, UserCircle, LogIn, Clock, ListChecks, AlertTriangle, Share2, Shuffle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { motion } from 'framer-motion';
@@ -93,6 +93,24 @@ export default function RaffleDetailsPage() {
   const handleSelectionChange = (numbers: number[]) => {
     setSelectedNumbers(numbers);
   };
+
+  const handleRandomNumberSelection = () => {
+    if (!raffle) return;
+    const availableNumbers = Array.from({ length: raffle.totalNumbers }, (_, i) => i + 1)
+                                  .filter(num => !effectiveSoldNumbers.includes(num));
+    if (availableNumbers.length > 0) {
+      const randomIndex = Math.floor(Math.random() * availableNumbers.length);
+      const randomNumber = availableNumbers[randomIndex];
+      setSelectedNumbers([randomNumber]);
+    } else {
+      toast({
+        title: "No hay números disponibles",
+        description: "Todos los números para esta rifa han sido vendidos.",
+        variant: "destructive"
+      });
+    }
+  };
+
 
   const handlePaymentSuccess = async () => {
     if (raffle && raffle.id) {
@@ -283,15 +301,34 @@ export default function RaffleDetailsPage() {
             !authIsLoading && ( 
               isLoggedIn ? ( 
                 <>
-                  <NumberSelector
-                    totalNumbers={raffle.totalNumbers}
-                    soldNumbers={effectiveSoldNumbers}
-                    pricePerTicket={raffle.pricePerTicket}
-                    currency={raffle.currency || 'USD'}
-                    onSelectionChange={handleSelectionChange}
-                    minTickets={raffle.minTicketsPerPurchase}
-                    maxTickets={raffle.maxTicketsPerPurchase}
-                  />
+                  {raffle.allowRandomNumberSelection ? (
+                    <div className="text-center p-4">
+                      <Button onClick={handleRandomNumberSelection} size="lg" className="bg-accent hover:bg-accent/90" disabled={selectedNumbers.length > 0}>
+                        <Shuffle className="mr-2 h-5 w-5" />
+                        Obtener Boleto Aleatorio
+                      </Button>
+                      <p className="text-xs text-muted-foreground mt-2">Se te asignará un número disponible al azar.</p>
+                       {selectedNumbers.length > 0 && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="mt-3 text-sm"
+                        >
+                          ¡Tu número aleatorio es el <span className="font-bold text-lg text-primary">{selectedNumbers[0]}</span>!
+                        </motion.div>
+                      )}
+                    </div>
+                  ) : (
+                    <NumberSelector
+                      totalNumbers={raffle.totalNumbers}
+                      soldNumbers={effectiveSoldNumbers}
+                      pricePerTicket={raffle.pricePerTicket}
+                      currency={raffle.currency || 'USD'}
+                      onSelectionChange={handleSelectionChange}
+                      minTickets={raffle.minTicketsPerPurchase}
+                      maxTickets={raffle.maxTicketsPerPurchase}
+                    />
+                  )}
                   {selectedNumbers.length > 0 && raffle && raffle.id && raffle.name && (
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
@@ -330,3 +367,6 @@ export default function RaffleDetailsPage() {
     </div>
   );
 }
+
+
+    

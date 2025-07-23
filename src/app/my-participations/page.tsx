@@ -211,10 +211,8 @@ ID de Participación: ${participation.id}`;
 
             const isRaffleArchivedWithResult = !participationRaffle && !!raffleResult;
             
-            // CRITICAL FIX: Ensure sourceOfTruth is not undefined.
-            const sourceOfTruth = isRaffleArchivedWithResult ? raffleResult : participationRaffle;
+            const sourceOfTruth: Raffle | RaffleResult | undefined = isRaffleArchivedWithResult ? raffleResult : participationRaffle;
 
-            // If raffle was deleted and has no results, sourceOfTruth will be undefined. Handle this case.
             if (!sourceOfTruth) {
               return (
                 <Card key={participation.id} className="shadow-lg border-neutral-500/30 bg-neutral-500/10 opacity-70">
@@ -259,7 +257,7 @@ ID de Participación: ${participation.id}`;
             }
             const isWinner = userWinningPrizes.length > 0;
             const allWinningNumbersStr = sourceOfTruth.winningNumbers?.filter(n => n !== null).join(', ') || '';
-            const raffleName = sourceOfTruth.name || sourceOfTruth.raffleName || participation.raffleName;
+            const raffleName = ('name' in sourceOfTruth && sourceOfTruth.name) || ('raffleName' in sourceOfTruth && sourceOfTruth.raffleName) || participation.raffleName;
             
             const canRate = !isRaffleArchivedWithResult &&
                             participation.paymentStatus === 'confirmed' && 
@@ -430,7 +428,7 @@ ID de Participación: ${participation.id}`;
                                             {(sourceOfTruth.prizes || []).map((prize, index) => (
                                                 <li key={index}>
                                                     <strong>{prize.description}:</strong> Nro. {sourceOfTruth.winningNumbers?.[index] || 'N/A'}. 
-                                                    Ganador: {sourceOfTruth.winnerNames?.[index] || <span className="italic">No registrado</span>}.
+                                                    Ganador: {('winnerNames' in sourceOfTruth && sourceOfTruth.winnerNames?.[index]) || <span className="italic">No registrado</span>}.
                                                 </li>
                                             ))}
                                         </ul>
@@ -514,3 +512,4 @@ ID de Participación: ${participation.id}`;
     </div>
   );
 }
+

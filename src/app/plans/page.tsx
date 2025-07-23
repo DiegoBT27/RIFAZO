@@ -162,7 +162,7 @@ export default function PlansPage() {
                     {isCurrentUserPlan && plan.name !== 'free' ? 'Ya tienes este plan' :
                     isCurrentUserPlan && plan.name === 'free' ? 'GRATIS (Tu Plan Actual)' :
                     plan.name === 'free' ? 'GRATIS' :
-                    plan.name === 'standard' ? '2.5$ por 15 días' :
+                    plan.name === 'standard' ? '2.5$ por 30 días' :
                     plan.name === 'pro' ? '5$ por 30 días' :
                     'CONTRATAR'
                     }

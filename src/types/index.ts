@@ -29,6 +29,7 @@ export interface Raffle {
   confirmedPaymentsCount: number; // New field for data integrity
   minTicketsPerPurchase?: number | null; // Optional minimum tickets
   maxTicketsPerPurchase?: number | null; // Optional maximum tickets
+  allowRandomNumberSelection?: boolean; // New feature
   prizes: Prize[];
   acceptedPaymentMethods?: AcceptedPaymentMethod[];
   creatorUsername?: string;

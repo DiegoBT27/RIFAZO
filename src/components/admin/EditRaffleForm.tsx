@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -70,6 +71,7 @@ const createEditRaffleFormSchema = (planMaxTickets: number | Infinity, planDispl
   totalNumbers: z.coerce.number().int().min(10, { message: "Debe haber al menos 10 números." }),
   minTicketsPerPurchase: z.coerce.number().int().min(1, "El mínimo debe ser al menos 1.").optional().nullable(),
   maxTicketsPerPurchase: z.coerce.number().int().min(1, "El máximo debe ser al menos 1.").optional().nullable(),
+  allowRandomNumberSelection: z.boolean().optional().default(false),
   drawDate: z.date({ required_error: "La fecha del sorteo es obligatoria."}),
   isScheduled: z.boolean().optional(),
   publicationDate: z.date().optional(),
@@ -239,6 +241,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
         totalNumbers: raffle.totalNumbers,
         minTicketsPerPurchase: raffle.minTicketsPerPurchase || null,
         maxTicketsPerPurchase: raffle.maxTicketsPerPurchase || null,
+        allowRandomNumberSelection: raffle.allowRandomNumberSelection || false,
         drawDate: parse(raffle.drawDate, 'yyyy-MM-dd', new Date()),
         isScheduled: !!raffle.publicationDate,
         publicationDate: pubDateTime.date,
@@ -343,6 +346,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
       totalNumbers: data.totalNumbers,
       minTicketsPerPurchase: data.minTicketsPerPurchase || null,
       maxTicketsPerPurchase: data.maxTicketsPerPurchase || null,
+      allowRandomNumberSelection: data.allowRandomNumberSelection,
       drawDate: format(data.drawDate, 'yyyy-MM-dd'),
       publicationDate: publicationDateISO,
       status: status,
@@ -666,10 +670,10 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
         <Separator />
 
         <div className="space-y-3">
-          <Label className="text-xs sm:text-sm">Límites de Compra (Opcional)</Label>
+          <Label className="text-xs sm:text-sm">Configuraciones de Compra</Label>
            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
-              <Label htmlFor={`${formPrefix}minTickets`} className="text-xs text-muted-foreground">Mínimo de boletos por compra</Label>
+              <Label htmlFor={`${formPrefix}minTickets`} className="text-xs text-muted-foreground">Mínimo de boletos por compra (Opcional)</Label>
               <Input
                 id={`${formPrefix}minTickets`}
                 type="number"
@@ -680,7 +684,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
               {errors.minTicketsPerPurchase && <p className="text-xs text-destructive mt-1">{errors.minTicketsPerPurchase.message}</p>}
             </div>
             <div>
-              <Label htmlFor={`${formPrefix}maxTickets`} className="text-xs text-muted-foreground">Máximo de boletos por compra</Label>
+              <Label htmlFor={`${formPrefix}maxTickets`} className="text-xs text-muted-foreground">Máximo de boletos por compra (Opcional)</Label>
               <Input
                 id={`${formPrefix}maxTickets`}
                 type="number"
@@ -691,6 +695,23 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
               {errors.maxTicketsPerPurchase && <p className="text-xs text-destructive mt-1">{errors.maxTicketsPerPurchase.message}</p>}
             </div>
           </div>
+           <div className="flex items-center space-x-2 pt-2">
+                <Controller
+                    name="allowRandomNumberSelection"
+                    control={control}
+                    render={({ field }) => (
+                        <Switch
+                        id={`${formPrefix}allowRandom`}
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        />
+                    )}
+                />
+                <div className='grid gap-0.5'>
+                    <Label htmlFor={`${formPrefix}allowRandom`} className="text-xs sm:text-sm font-medium cursor-pointer">Permitir selección de número aleatorio</Label>
+                    <p className="text-xs text-muted-foreground">Si se activa, los usuarios podrán obtener un número al azar en lugar de seleccionarlo manualmente.</p>
+                </div>
+            </div>
         </div>
 
 

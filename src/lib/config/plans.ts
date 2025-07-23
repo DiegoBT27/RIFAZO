@@ -46,9 +46,9 @@ export const PLAN_CONFIG: Record<PlanName, PlanDetails> = {
   free: {
     name: 'free',
     displayName: 'Gratis',
-    durationDays: 7,
+    durationDays: 30,
     raffleLimit: 2,
-    maxTicketsPerRaffle: 50,
+    maxTicketsPerRaffle: 100,
     canEditRaffles: true,
     canDisplayRatingsPublicly: false,
     includesMultiplePrizes: false,
@@ -64,7 +64,7 @@ export const PLAN_CONFIG: Record<PlanName, PlanDetails> = {
   standard: {
     name: 'standard',
     displayName: 'Estándar',
-    durationDays: 15,
+    durationDays: 30,
     raffleLimit: 10,
     maxTicketsPerRaffle: 100,
     canEditRaffles: true,

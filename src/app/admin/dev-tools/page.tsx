@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, AlertTriangle, CheckCircle, DatabaseZap, Trash2 } from 'lucide-react';
-// import { clearAllTestDataFromFirestore } from '@/lib/firebase/firestoreService'; // Import commented out
+import { clearAllTestDataFromFirestore } from '@/lib/firebase/firestoreService';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   AlertDialog,
@@ -45,31 +45,30 @@ export default function DevToolsPage() {
     setIsCleanConfirmOpen(false);
     setIsCleaning(true);
     setCleanResult(null);
-    toast({ title: 'Función Deshabilitada', description: 'La limpieza de datos de prueba está actualmente deshabilitada.' });
-    // try {
-    //   // const result = await clearAllTestDataFromFirestore(); // Function call commented out
-    //   // setCleanResult(result);
-    //   // if (result.errors.length > 0) {
-    //   //   toast({
-    //   //     title: 'Limpieza Completada con Errores',
-    //   //     description: `Se encontraron ${result.errors.length} errores. Revisa el resumen.`,
-    //   //     variant: 'destructive',
-    //   //     duration: 7000,
-    //   //   });
-    //   // } else {
-    //   //   toast({
-    //   //     title: 'Limpieza de Datos Exitosa',
-    //   //     description: 'Los datos de prueba han sido eliminados de Firestore.',
-    //   //   });
-    //   // }
-    // } catch (error: any) {
-    //   console.error('Error cleaning database:', error);
-    //   setCleanResult({ summary: [], errors: [`Error general durante la limpieza: ${error.message}`] });
-    //   toast({ title: 'Error en la Limpieza', description: 'No se pudieron eliminar los datos de prueba.', variant: 'destructive' });
-    // } finally {
-    //   setIsCleaning(false);
-    // }
-    setIsCleaning(false); // Ensure loading state is reset
+    toast({ title: 'Limpiando Datos de Prueba...', description: 'Esta acción puede tardar un momento.' });
+    try {
+      const result = await clearAllTestDataFromFirestore();
+      setCleanResult(result);
+      if (result.errors.length > 0) {
+        toast({
+          title: 'Limpieza Completada con Errores',
+          description: `Se encontraron ${result.errors.length} errores. Revisa el resumen.`,
+          variant: 'destructive',
+          duration: 7000,
+        });
+      } else {
+        toast({
+          title: 'Limpieza de Datos Exitosa',
+          description: 'Los datos de prueba han sido eliminados de Firestore.',
+        });
+      }
+    } catch (error: any) {
+      console.error('Error cleaning database:', error);
+      setCleanResult({ summary: [], errors: [`Error general durante la limpieza: ${error.message}`] });
+      toast({ title: 'Error en la Limpieza', description: 'No se pudieron eliminar los datos de prueba.', variant: 'destructive' });
+    } finally {
+      setIsCleaning(false);
+    }
   };
 
   if (authIsLoading || (!isLoggedIn && user?.role !== 'founder')) {
@@ -90,21 +89,21 @@ export default function DevToolsPage() {
       <Card className="shadow-lg border-destructive">
         <CardHeader>
           <CardTitle className="text-lg flex items-center text-destructive">
-            <Trash2 className="mr-2 h-5 w-5" /> Limpiar Todos los Datos de Prueba (Deshabilitado)
+            <Trash2 className="mr-2 h-5 w-5" /> Limpiar Todos los Datos de Prueba
           </CardTitle>
           <CardDescription className="text-destructive/90">
-            <span className="font-bold">¡ADVERTENCIA!</span> Esta acción eliminaría permanentemente todas las rifas, participaciones, resultados de rifas y todos los usuarios excepto el usuario 'fundador'.
-            <span className="block mt-1">Actualmente deshabilitado.</span>
+            <span className="font-bold">¡ADVERTENCIA!</span> Esta acción eliminará permanentemente todas las rifas, participaciones, resultados de rifas y todos los usuarios excepto el usuario 'fundador'.
+            <span className="block mt-1">Úsalo solo en un entorno de desarrollo para reiniciar la base de datos.</span>
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Button 
             onClick={() => setIsCleanConfirmOpen(true)} 
-            disabled={true} // Button is now permanently disabled
+            disabled={isCleaning}
             className="w-full bg-destructive hover:bg-destructive/80"
           >
             {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-            {isCleaning ? 'Limpiando Datos...' : 'Limpiar Datos de Prueba (Deshabilitado)'}
+            {isCleaning ? 'Limpiando Datos...' : 'Limpiar Datos de Prueba'}
           </Button>
         </CardContent>
       </Card>
@@ -142,18 +141,18 @@ export default function DevToolsPage() {
               <AlertTriangle className="mr-2 h-6 w-6 text-destructive" /> ¡CONFIRMACIÓN EXTREMA!
             </AlertDialogTitle>
             <AlertDialogDescription className="text-base py-2">
-              Esta función está actualmente deshabilitada.
+              Estás a punto de borrar irreversiblemente casi toda la base de datos. Solo el usuario 'fundador' permanecerá. ¿Estás absolutamente seguro de que quieres hacer esto?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isCleaning || true} className="text-xs">Cerrar</AlertDialogCancel>
+            <AlertDialogCancel disabled={isCleaning} className="text-xs">Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleClearData}
-              disabled={isCleaning || true} // Action is also disabled
+              disabled={isCleaning}
               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
             >
               {isCleaning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Acción Deshabilitada
+              Sí, entiendo las consecuencias, eliminar todo
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

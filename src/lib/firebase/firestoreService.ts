@@ -1254,3 +1254,30 @@ export const importFirestoreCollections = async (
   }
   return { success: errors.length === 0, errors, summary };
 };
+
+export const clearAllTestDataFromFirestore = async (): Promise<{ summary: string[], errors: string[] }> => {
+  const summary: string[] = [];
+  const errors: string[] = [];
+  
+  const collectionsToClear = [
+    'participations', 
+    'raffleResults',
+    'activityLogs', 
+    'ratings',
+    'raffles',
+    'users' // 'users' should be last
+  ];
+
+  for (const collectionName of collectionsToClear) {
+    try {
+      const deletedCount = await deleteAllDocumentsInCollection(collectionName);
+      summary.push(`Se eliminaron ${deletedCount} documentos de la colección "${collectionName}".`);
+    } catch (error: any) {
+      const errorMsg = `Error limpiando la colección "${collectionName}": ${error.message}`;
+      errors.push(errorMsg);
+      summary.push(`Fallo al limpiar "${collectionName}".`);
+    }
+  }
+
+  return { summary, errors };
+};
