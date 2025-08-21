@@ -232,12 +232,6 @@ export default function RegisterForm() {
               Inicia sesión aquí
             </Link>
           </div>
-          <Separator className="w-3/4" />
-           <div className="text-sm text-center">
-            <Link href="/register-organizer" className="text-accent hover:underline font-medium">
-                ¿Quieres ser organizador? Solicítalo aquí
-            </Link>
-          </div>
         </CardFooter>
       </Card>
 

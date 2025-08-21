@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useState, type FormEvent, type ChangeEvent } from 'react';
@@ -9,12 +8,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { AlertTriangle, Hash, Loader2, MessageSquare, ImagePlus, UploadCloud, TriangleAlert } from 'lucide-react';
+import { AlertTriangle, Hash, Loader2, MessageSquare, ImagePlus, UploadCloud, TriangleAlert, Key } from 'lucide-react';
 import { Phone as PhoneIcon } from 'lucide-react';
 import { User } from 'lucide-react';
-import type { Participation, Raffle } from '@/types';
+import type { Participation, Raffle, ManagedUser } from '@/types';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { addParticipation, getUserByUsername, getParticipationsByRaffleId } from '@/lib/firebase/firestoreService';
+import { addParticipation, getUserByUsername, getUserByField, addUser } from '@/lib/firebase/firestoreService';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 import { buttonVariants } from '../ui/button';
@@ -73,10 +72,13 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
   const [participantLastName, setParticipantLastName] = useState('');
   const [participantIdCard, setParticipantIdCard] = useState('');
   const [participantPhone, setParticipantPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
   const { toast } = useToast();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, login } = useAuth();
 
 
   if (!raffle || !raffle.id || !raffle.name) {
@@ -103,30 +105,68 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
     event.preventDefault();
     setIsSubmitting(true);
 
-    if (!currentUser?.username) {
-      toast({ title: "Error de Autenticación", description: "No se pudo identificar al usuario. Por favor, vuelve a iniciar sesión.", variant: "destructive" });
-      setIsSubmitting(false);
-      return;
-    }
-
     if (selectedNumbersCount === 0 || !participantName || !participantLastName || !participantIdCard || !participantPhone) {
       toast({ title: "Error de Formulario", description: "Por favor, completa todos los campos requeridos.", variant: "destructive" });
       setIsSubmitting(false);
       return;
     }
 
+    if (!currentUser && (!password || password.length < 6 || password !== confirmPassword)) {
+      if (!password || password.length < 6) {
+          toast({ title: "Contraseña Inválida", description: "Tu nueva contraseña debe tener al menos 6 caracteres.", variant: "destructive" });
+      } else {
+          toast({ title: "Las contraseñas no coinciden", description: "Por favor, verifica tu nueva contraseña.", variant: "destructive" });
+      }
+      setIsSubmitting(false);
+      return;
+    }
+    
     if (!isSelectionValid) {
        toast({ title: "Error de Límites", description: "La cantidad de boletos seleccionados no cumple con los límites de la rifa.", variant: "destructive" });
        setIsSubmitting(false);
        return;
     }
 
+    let effectiveUser = currentUser;
+
     try {
+      if (!currentUser) {
+        // This is a new user, create their account implicitly
+        const existingUser = await getUserByField('idCardNumber', participantIdCard);
+        if (existingUser) {
+            toast({
+              title: "Usuario Existente",
+              description: `Ya existe una cuenta asociada a la cédula ${participantIdCard}. Por favor, inicia sesión para continuar.`,
+              variant: "destructive",
+              duration: 7000,
+            });
+            setIsSubmitting(false);
+            return;
+        }
+
+        const newUserPartial: Omit<ManagedUser, 'id'> = {
+            username: participantIdCard,
+            password: password,
+            role: 'user',
+            isBlocked: false,
+            favoriteRaffleIds: [],
+            idCardNumber: participantIdCard,
+            fullName: `${participantName} ${participantLastName}`,
+            whatsappNumber: participantPhone,
+        };
+        const newUser = await addUser(newUserPartial);
+        effectiveUser = newUser; // Use the newly created user for the rest of the process
+      }
+
+      if (!effectiveUser) {
+        throw new Error("No se pudo determinar el usuario para la participación.");
+      }
+
       const newParticipationData: Omit<Participation, 'id'> = {
         raffleId: raffle.id,
         raffleName: raffle.name,
         creatorUsername: raffle.creatorUsername,
-        participantUsername: currentUser.username,
+        participantUsername: effectiveUser.username,
         numbers: selectedNumbers,
         paymentStatus: 'pending',
         purchaseDate: new Date().toISOString(),
@@ -137,20 +177,25 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
         paymentNotes: notes,
       };
 
-      // This now uses a transaction and will throw an error if a number is taken
       const savedParticipation = await addParticipation(newParticipationData);
       
       onPaymentSuccess();
       
       downloadTicketTextFile({ ...newParticipationData, id: savedParticipation.id }, raffle, totalAmount);
       
+      let toastDescription = `Se ha registrado tu participación. Se descargará un archivo con los detalles. A continuación, se abrirá WhatsApp para contactar al organizador: ${raffle.creatorUsername || 'RIFAZO'}.`;
+
+      if (!currentUser) {
+        toastDescription = `¡Bienvenido a RIFAZO! Tu cuenta ha sido creada. Tu usuario es tu Cédula y tu contraseña la que acabas de definir. ${toastDescription}`;
+        await login(effectiveUser.username, password); // Log the new user in
+      }
+
       toast({
         title: "Participación Registrada",
-        description: `Se ha registrado tu participación. Se descargará un archivo con los detalles. A continuación, se abrirá WhatsApp para contactar al organizador: ${raffle.creatorUsername || 'RIFAZO'}.`,
-        duration: 8000,
+        description: toastDescription,
+        duration: 10000,
       });
 
-      // Just-in-time fetch for the most current creator profile data
       let finalWhatsappNumber = FALLBACK_ADMIN_WHATSAPP_NUMBER;
       if (raffle.creatorUsername) {
           const creatorProfile = await getUserByUsername(raffle.creatorUsername);
@@ -176,7 +221,6 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
         setTimeout(() => router.push('/my-participations'), 1500);
       }, 1000);
 
-
       setNotes('');
       setParticipantName('');
       setParticipantLastName('');
@@ -193,7 +237,7 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
           });
           onPaymentSuccess(); // Refresh numbers
       } else {
-         toast({ title: "Error al Procesar", description: "No se pudo registrar tu participación. Intenta de nuevo.", variant: "destructive" });
+         toast({ title: "Error al Procesar", description: error.message || "No se pudo registrar tu participación. Intenta de nuevo.", variant: "destructive" });
       }
     } finally {
       setIsSubmitting(false);
@@ -205,9 +249,15 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
        <Alert variant="default" className="bg-primary/5 border-primary/20">
         <MessageSquare className="h-4 w-4 text-primary" />
         <AlertTitle className="text-primary text-sm font-semibold">Registra tu Participación</AlertTitle>
-        <AlertDescription className="text-xs text-primary/80">
-          Completa tus datos. Al finalizar, se generará un comprobante y se abrirá WhatsApp para que contactes al organizador y coordines el pago.
-        </AlertDescription>
+        {!currentUser ? (
+          <AlertDescription className="text-xs text-primary/80">
+            Estás a punto de participar. Al ser tu primera vez, tu Cédula será tu nombre de usuario. ¡Solo necesitas crear una contraseña y listo!
+          </AlertDescription>
+        ) : (
+          <AlertDescription className="text-xs text-primary/80">
+            Completa tus datos. Al finalizar, se generará un comprobante y se abrirá WhatsApp para que contactes al organizador y coordines el pago.
+          </AlertDescription>
+        )}
       </Alert>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
@@ -229,10 +279,10 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
         <div>
-          <Label htmlFor="participantIdCard" className="block text-xs font-medium mb-0.5">Cédula/ID (para el boleto)</Label>
+          <Label htmlFor="participantIdCard" className="block text-xs font-medium mb-0.5">Cédula/ID (será tu usuario)</Label>
           <div className="relative">
             <Hash className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input id="participantIdCard" value={participantIdCard} onChange={(e) => setParticipantIdCard(e.target.value)} placeholder="V-XXXXXXXX" required disabled={isSubmitting} className="pl-8 text-xs h-9" />
+            <Input id="participantIdCard" value={participantIdCard} onChange={(e) => setParticipantIdCard(e.target.value)} placeholder="V-XXXXXXXX" required disabled={isSubmitting || !!currentUser} className="pl-8 text-xs h-9" />
           </div>
         </div>
         <div>
@@ -243,6 +293,25 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
           </div>
         </div>
       </div>
+
+      {!currentUser && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 border-t pt-4">
+            <div>
+                <Label htmlFor="password-implicit" className="block text-xs font-medium mb-0.5">Crea tu Contraseña</Label>
+                <div className="relative">
+                    <Key className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input id="password-implicit" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Mínimo 6 caracteres" required disabled={isSubmitting} className="pl-8 text-xs h-9" />
+                </div>
+            </div>
+            <div>
+                <Label htmlFor="confirmPassword-implicit" className="block text-xs font-medium mb-0.5">Confirma tu Contraseña</Label>
+                <div className="relative">
+                    <Key className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input id="confirmPassword-implicit" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Repite la contraseña" required disabled={isSubmitting} className="pl-8 text-xs h-9" />
+                </div>
+            </div>
+        </div>
+      )}
       
       <div>
         <Label htmlFor="notes" className="block text-xs font-medium mb-0.5">Notas Adicionales (Opcional)</Label>

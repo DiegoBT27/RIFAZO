@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { AlertCircle, Loader2, FileText, ShieldAlert, Eye, EyeOff } from 'lucide-react';
+import { AlertCircle, Loader2, FileText, ShieldAlert, Eye, EyeOff, UserPlus, ShieldCheck } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
@@ -28,12 +28,6 @@ import { Separator } from '../ui/separator';
 const loginSchema = z.object({
   username: z.string().min(1, { message: "El nombre de usuario es requerido." }),
   password: z.string().min(1, { message: "La contraseña es requerida." }),
-  privacyPolicyAccepted: z.boolean().refine(value => value === true, {
-    message: "Debes aceptar las Políticas de Privacidad para continuar.",
-  }),
-  termsAndConditionsAccepted: z.boolean().refine(value => value === true, {
-    message: "Debes aceptar los Términos y Condiciones para continuar.",
-  }),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -45,6 +39,7 @@ export default function LoginForm() {
   const [isFormLoading, setIsFormLoading] = useState(false);
   const [isPrivacyPolicyOpen, setIsPrivacyPolicyOpen] = useState(false);
   const [isTermsOpen, setIsTermsOpen] = useState(false);
+  const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const [dialogContent, setDialogContent] = useState<{ title: string; description: React.ReactNode } | null>(null);
@@ -97,8 +92,6 @@ export default function LoginForm() {
     defaultValues: {
         username: '',
         password: '',
-        privacyPolicyAccepted: false,
-        termsAndConditionsAccepted: false,
     }
   });
 
@@ -131,20 +124,19 @@ export default function LoginForm() {
           <CardDescription>Accede a RIFAZO</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
-              <Label htmlFor="username-login">Nombre de Usuario</Label>
-              <Input id="username-login" {...register("username")} placeholder="usuario" disabled={isFormLoading} />
+              <Input id="username-login" {...register("username")} placeholder="Nombre de Usuario (tu cédula)" disabled={isFormLoading} />
+              <p className="text-xs text-muted-foreground mt-1 px-1">Recuerda: Tu nombre de usuario es tu número de cédula.</p>
               {errors.username && <p className="text-xs text-destructive mt-1">{errors.username.message}</p>}
             </div>
             <div>
-              <Label htmlFor="password-login">Contraseña</Label>
               <div className="relative">
                   <Input
                     id="password-login"
                     type={showPassword ? "text" : "password"}
                     {...register("password")}
-                    placeholder="tu contraseña"
+                    placeholder="Contraseña"
                     disabled={isFormLoading}
                     className="pr-10"
                   />
@@ -162,63 +154,15 @@ export default function LoginForm() {
                   </Button>
               </div>
               {errors.password && <p className="text-xs text-destructive mt-1">{errors.password.message}</p>}
-            </div>
-
-            <div className="space-y-2 pt-1">
-              <div>
-                <div className="flex items-start space-x-2">
-                  <Controller
-                    name="privacyPolicyAccepted"
-                    control={control}
-                    render={({ field }) => (
-                      <Checkbox
-                        id="privacyPolicyAccepted-login"
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        disabled={isFormLoading}
-                        className="h-3 w-3 mt-[2px] [&_svg]:h-2.5 [&_svg]:w-2.5"
-                      />
-                    )}
-                  />
-                  <div className="grid gap-0.5 leading-none">
-                    <Label htmlFor="privacyPolicyAccepted-login" className="text-xs font-normal cursor-pointer">
-                      Acepto las{' '}
-                      <Button variant="link" type="button" className="p-0 h-auto text-xs text-primary hover:underline" onClick={() => setIsPrivacyPolicyOpen(true)} disabled={isFormLoading}>
-                        Políticas de Privacidad
-                      </Button>
-                      .
-                    </Label>
-                    {errors.privacyPolicyAccepted && <p className="text-xs text-destructive">{errors.privacyPolicyAccepted.message}</p>}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-start space-x-2">
-                  <Controller
-                    name="termsAndConditionsAccepted"
-                    control={control}
-                    render={({ field }) => (
-                      <Checkbox
-                        id="termsAndConditionsAccepted-login"
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                        disabled={isFormLoading}
-                        className="h-3 w-3 mt-[2px] [&_svg]:h-2.5 [&_svg]:w-2.5"
-                      />
-                    )}
-                  />
-                  <div className="grid gap-0.5 leading-none">
-                  <Label htmlFor="termsAndConditionsAccepted-login" className="text-xs font-normal cursor-pointer">
-                    Acepto los{' '}
-                    <Button variant="link" type="button" className="p-0 h-auto text-xs text-primary hover:underline" onClick={() => setIsTermsOpen(true)} disabled={isFormLoading}>
-                      Términos y Condiciones
-                    </Button>
-                    .
-                  </Label>
-                  {errors.termsAndConditionsAccepted && <p className="text-xs text-destructive">{errors.termsAndConditionsAccepted.message}</p>}
-                  </div>
-                </div>
+              <div className="text-right mt-2">
+                 <Button 
+                    type="button" 
+                    variant="link" 
+                    className="p-0 h-auto text-xs text-primary" 
+                    onClick={() => setIsForgotPasswordOpen(true)}
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </Button>
               </div>
             </div>
 
@@ -232,13 +176,36 @@ export default function LoginForm() {
             </Button>
           </form>
         </CardContent>
-        <CardFooter className="flex flex-col items-center text-center text-sm space-y-2 pt-4">
-          <div>
-            <span>¿No tienes una cuenta?&nbsp;</span>
-            <Link href="/register" className="text-primary hover:underline font-medium">
-              Regístrate aquí
-            </Link>
+        <CardFooter className="flex flex-col items-center text-center text-sm space-y-3 pt-4">
+          <p className="text-muted-foreground">¿No tienes una cuenta?</p>
+          <div className="flex w-full flex-col sm:flex-row gap-2">
+            <Button asChild variant="outline" className="flex-1 text-xs">
+              <Link href="/register">
+                <UserPlus className="mr-2 h-4 w-4"/> Registrarse como Usuario
+              </Link>
+            </Button>
+            <Button asChild variant="secondary" className="flex-1 text-xs bg-accent hover:bg-accent/90 text-accent-foreground">
+              <Link href="/register-organizer">
+                <ShieldCheck className="mr-2 h-4 w-4"/> Solicitar ser Organizador
+              </Link>
+            </Button>
           </div>
+           <div className="text-xs mt-4 space-x-4 border-t w-full pt-3">
+              <Button
+                variant="link"
+                className="text-slate-400 hover:text-primary h-auto p-0 text-xs"
+                onClick={() => setIsTermsOpen(true)}
+              >
+                Términos y Condiciones
+              </Button>
+              <Button
+                variant="link"
+                className="text-slate-400 hover:text-primary h-auto p-0 text-xs"
+                onClick={() => setIsPrivacyPolicyOpen(true)}
+              >
+                Políticas de Privacidad
+              </Button>
+            </div>
         </CardFooter>
       </Card>
 
@@ -257,6 +224,30 @@ export default function LoginForm() {
             <DialogClose asChild>
               <Button variant="outline" size="sm" className="text-xs">Cerrar</Button>
             </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      <Dialog open={isForgotPasswordOpen} onOpenChange={setIsForgotPasswordOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Recuperación de Contraseña</DialogTitle>
+            <DialogDescription>
+              Para restablecer tu contraseña, por favor sigue estos pasos:
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 text-sm space-y-3 text-muted-foreground">
+              <p>1. Contacta a nuestro equipo de soporte a través de WhatsApp.</p>
+              <p>2. Proporciona tu número de cédula para que podamos verificar tu identidad.</p>
+              <p>3. Una vez verificado, te ayudaremos a establecer una nueva contraseña de forma segura.</p>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline" size="sm">Cerrar</Button>
+            </DialogClose>
+             <a href={`https://wa.me/${ADMIN_WHATSAPP_NUMBER}?text=${encodeURIComponent('Hola, necesito ayuda para recuperar mi contraseña en RIFAZO. Mi número de cédula es:')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center">
+                <Button size="sm">Contactar por WhatsApp</Button>
+            </a>
           </DialogFooter>
         </DialogContent>
       </Dialog>

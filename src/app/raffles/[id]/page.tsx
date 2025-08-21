@@ -298,10 +298,9 @@ export default function RaffleDetailsPage() {
           <Separator className="my-1 sm:my-1.5"/>
           
           {availableTickets > 0 ? ( 
-            !authIsLoading && ( 
-              isLoggedIn ? ( 
-                <>
-                  {raffle.allowRandomNumberSelection ? (
+            !authIsLoading && (
+              <>
+                {raffle.allowRandomNumberSelection && !isLoggedIn ? (
                     <div className="text-center p-4">
                       <Button onClick={handleRandomNumberSelection} size="lg" className="bg-accent hover:bg-accent/90" disabled={selectedNumbers.length > 0}>
                         <Shuffle className="mr-2 h-5 w-5" />
@@ -318,41 +317,41 @@ export default function RaffleDetailsPage() {
                         </motion.div>
                       )}
                     </div>
-                  ) : (
-                    <NumberSelector
-                      totalNumbers={raffle.totalNumbers}
-                      soldNumbers={effectiveSoldNumbers}
-                      pricePerTicket={raffle.pricePerTicket}
-                      currency={raffle.currency || 'USD'}
-                      onSelectionChange={handleSelectionChange}
-                      minTickets={raffle.minTicketsPerPurchase}
-                      maxTickets={raffle.maxTicketsPerPurchase}
+                ) : !raffle.allowRandomNumberSelection || isLoggedIn ? (
+                  <NumberSelector
+                    totalNumbers={raffle.totalNumbers}
+                    soldNumbers={effectiveSoldNumbers}
+                    pricePerTicket={raffle.pricePerTicket}
+                    currency={raffle.currency || 'USD'}
+                    onSelectionChange={handleSelectionChange}
+                    minTickets={raffle.minTicketsPerPurchase}
+                    maxTickets={raffle.maxTicketsPerPurchase}
+                  />
+                ) : null}
+                {selectedNumbers.length > 0 && raffle && raffle.id && raffle.name && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, ease: "easeOut" }}
+                    className="mt-3 sm:mt-4"
+                  >
+                    <PaymentUploadForm
+                       raffle={raffle}
+                       selectedNumbers={selectedNumbers}
+                       pricePerTicket={raffle.pricePerTicket}
+                       onPaymentSuccess={handlePaymentSuccess}
                     />
-                  )}
-                  {selectedNumbers.length > 0 && raffle && raffle.id && raffle.name && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.3, ease: "easeOut" }}
-                      className="mt-3 sm:mt-4"
-                    >
-                      <PaymentUploadForm
-                         raffle={raffle}
-                         selectedNumbers={selectedNumbers}
-                         pricePerTicket={raffle.pricePerTicket}
-                         onPaymentSuccess={handlePaymentSuccess}
-                      />
-                    </motion.div>
-                  )}
-                </>
-              ) : ( 
-                <Alert variant="default" className="mt-3 sm:mt-4 bg-primary/10 border-primary/30">
-                  <LogIn className="h-4 w-4 text-primary" />
-                  <AlertDescription className="text-primary text-xs sm:text-sm">
-                    Debes <Link href="/login" className="font-bold underline">iniciar sesión</Link> o <Link href="/register" className="font-bold underline">registrarte</Link> para seleccionar números y participar.
-                  </AlertDescription>
-                </Alert>
-              )
+                  </motion.div>
+                )}
+                 {!isLoggedIn && raffle.allowRandomNumberSelection && (
+                    <Alert variant="default" className="mt-3 sm:mt-4 bg-primary/10 border-primary/30">
+                      <LogIn className="h-4 w-4 text-primary" />
+                      <AlertDescription className="text-primary text-xs sm:text-sm">
+                        Para participar con selección manual de números debes <Link href="/login" className="font-bold underline">iniciar sesión</Link> o <Link href="/register" className="font-bold underline">registrarte</Link>.
+                      </AlertDescription>
+                    </Alert>
+                )}
+              </>
             )
           ) : ( 
             <Alert variant="destructive" className="mt-3 sm:mt-4 text-center">
@@ -367,6 +366,3 @@ export default function RaffleDetailsPage() {
     </div>
   );
 }
-
-
-    

@@ -41,9 +41,6 @@ const organizerFormSchema = z.object({
   locationState: z.string().min(3, "Estado es requerido."),
   locationCity: z.string().min(3, "Ciudad es requerida."),
   
-  // Identity Verification
-  identityDocument: z.any().refine(files => files?.length == 1, "La foto de tu cédula es requerida."),
-  
   // Commercial Info
   commercialName: z.string().optional(),
   paymentMethods: z.array(z.string()).min(1, "Selecciona al menos un método de pago."),
@@ -121,8 +118,6 @@ const paymentMethodOptions = ["Pago Móvil", "Zelle", "Binance (USDT)", "Transfe
 export default function RegisterOrganizerForm() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [idCardDataUri, setIdCardDataUri] = useState<string | null>(null); // State to hold the final Data URI
   const [isTermsOpen, setIsTermsOpen] = useState(false);
   const [captchaText, setCaptchaText] = useState('');
 
@@ -155,31 +150,8 @@ export default function RegisterOrganizerForm() {
 
   const watchOrganizerType = watch("organizerType");
 
-  const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
 
-    if (file.size > 1 * 1024 * 1024) { // 1MB limit
-      toast({
-        title: "Archivo Demasiado Grande",
-        description: "La imagen no debe exceder 1MB.",
-        variant: "destructive",
-      });
-      event.target.value = ''; // Clear the file input
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUri = e.target?.result as string;
-      setImagePreview(dataUri);
-      setIdCardDataUri(dataUri);
-    };
-    reader.readAsDataURL(file);
-  };
-
-
-  const generateWhatsappMessage = (data: OrganizerFormValues, idCardUri: string): string => {
+  const generateWhatsappMessage = (data: OrganizerFormValues): string => {
     const paymentMethodsText = data.paymentMethods.includes('Otro')
       ? [...data.paymentMethods.filter(p => p !== 'Otro'), `Otro: ${data.otherPaymentMethod}`].join(', ')
       : data.paymentMethods.join(', ');
@@ -200,9 +172,6 @@ ${personalIdentifier}
 *📍 UBICACIÓN*
 *Estado:* ${data.locationState}
 *Ciudad:* ${data.locationCity}
-
-*🆔 VERIFICACIÓN DE IDENTIDAD*
-(Imagen de la cédula adjunta como texto a continuación)
 
 *🏷️ INFORMACIÓN COMERCIAL*
 *Nombre del proyecto:* ${data.commercialName || 'N/A'}
@@ -228,12 +197,7 @@ ${personalIdentifier}
 *📝 CONFIRMACIÓN FINAL*
 (Confirmado mediante CAPTCHA)
 -------------------------------------
-*Por favor, revise esta solicitud para su aprobación.*
-
-*Imagen de Cédula (Data URI):*
-\`\`\`
-${idCardDataUri}
-\`\`\`
+*Por favor, revise esta solicitud para su aprobación. Para completar la verificación, por favor adjunta una foto de tu cédula en este chat.*
     `;
   };
 
@@ -243,12 +207,6 @@ ${idCardDataUri}
     if (data.captchaText !== captchaText) {
       toast({ title: "Error de Verificación", description: "El código de verificación no coincide.", variant: "destructive" });
       generateCaptcha();
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (!idCardDataUri) {
-      toast({ title: "Error", description: "La imagen de la cédula es obligatoria y no se ha procesado.", variant: "destructive" });
       setIsSubmitting(false);
       return;
     }
@@ -267,7 +225,6 @@ ${idCardDataUri}
         whatsappNumber: data.whatsappNumber,
         locationState: data.locationState,
         locationCity: data.locationCity,
-        idCardImageUri: idCardDataUri,
         commercialName: data.commercialName,
         offeredPaymentMethods: data.paymentMethods.includes('Otro') 
           ? [...data.paymentMethods.filter(p => p !== 'Otro'), `Otro: ${data.otherPaymentMethod}`]
@@ -285,12 +242,12 @@ ${idCardDataUri}
 
       await addUser(newUser);
 
-      const message = generateWhatsappMessage(data, idCardDataUri);
+      const message = generateWhatsappMessage(data);
       const whatsappUrl = `https://wa.me/${ADMIN_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
       
       toast({
         title: "Solicitud Enviada",
-        description: "Tu solicitud ha sido enviada. Serás redirigido a WhatsApp para completar el proceso.",
+        description: "Tu solicitud ha sido enviada. Serás redirigido a WhatsApp para completar el proceso de verificación.",
         duration: 7000,
       });
 
@@ -412,24 +369,13 @@ ${idCardDataUri}
               </div>
             </div>
           )}
-
+          
           {renderSection("Verificación de Identidad", <UserSquare className="h-5 w-5"/>,
-            <div>
-               <Label htmlFor="identityDocument" className="sr-only">Foto de tu cédula. Formato JPG o PNG, máximo 1MB, imagen clara y legible.</Label>
-               <p className="text-sm text-muted-foreground mb-1.5 px-1">Foto de tu cédula. Formato JPG o PNG, máximo 1MB, imagen clara y legible.</p>
-              <Input 
-                id="identityDocument" 
-                type="file" 
-                accept="image/jpeg, image/png" 
-                {...register("identityDocument")} 
-                onChange={handleImageChange}
-                disabled={isSubmitting} 
-                className="file:text-primary file:font-semibold" 
-              />
-              {imagePreview && <Image src={imagePreview} alt="Vista previa de la cédula" width={200} height={120} className="mt-2 rounded-md border" data-ai-hint="id card" />}
-              {errors.identityDocument && <p className="text-sm text-destructive mt-1">{errors.identityDocument.message as string}</p>}
+             <div>
+               <p className="text-sm text-muted-foreground mb-1.5 px-1">Para verificar tu identidad, te pediremos que envíes una foto de tu cédula por WhatsApp al finalizar el registro.</p>
             </div>
           )}
+
 
           {renderSection("Información Comercial", <Building className="h-5 w-5"/>,
             <>
@@ -602,7 +548,7 @@ ${idCardDataUri}
               <p>Nos reservamos el derecho de modificar estos términos en cualquier momento. Las modificaciones serán notificadas dentro de la app o en la página oficial del servicio.</p>
 
               <h4>8. ACEPTACIÓN</h4>
-              <p>Al registrarte en RIFAZO, confirmas que has leído y aceptado estos Térmos y Condiciones.</p>
+              <p>Al registrarte en RIFAZO, confirmas que has leído y aceptado estos Términos y Condiciones.</p>
               
               <hr className="my-3"/>
               <p>Si tienes dudas, puedes contactarnos por WhatsApp desde el botón de soporte dentro de la aplicación.</p>

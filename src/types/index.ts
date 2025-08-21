@@ -89,7 +89,6 @@ export interface ManagedUser {
   whatsappNumber?: string;
   locationState?: string;
   locationCity?: string;
-  idCardImageUri?: string; 
   commercialName?: string;
   offeredPaymentMethods?: string[];
   publicAlias?: string;

@@ -71,7 +71,7 @@ export const getUserByEmail = async (email: string): Promise<ManagedUser | null>
   return { id: docData.id, ...docData.data() } as ManagedUser;
 };
 
-const getUserByField = async (fieldName: keyof ManagedUser, value: string): Promise<ManagedUser | null> => {
+export const getUserByField = async (fieldName: keyof ManagedUser, value: string): Promise<ManagedUser | null> => {
   if (!value || value.trim() === '') return null;
   const q = query(usersCollection, where(fieldName, '==', value));
   const snapshot = await getDocs(q);
@@ -158,7 +158,7 @@ export const addUser = async (userData: Omit<ManagedUser, 'id'>): Promise<Manage
   const optionalFields: (keyof Omit<ManagedUser, 'id' | 'username' | 'password' | 'role' | 'isBlocked' | 'averageRating' | 'ratingCount' | 'plan' | 'planActive' | 'planStartDate' | 'planEndDate' | 'planAssignedBy' | 'rafflesCreatedThisPeriod' | 'sessionId' | 'failedLoginAttempts' | 'lockoutUntil' | 'favoriteRaffleIds'>)[] = [
     'organizerType', 'fullName', 'companyName', 'rif', 'publicAlias',
     'whatsappNumber', 'locationState', 'locationCity',
-    'email', 'bio', 'adminPaymentMethodsInfo', 'idCardImageUri', 'commercialName', 'offeredPaymentMethods', 'commitmentAgreed', 'guaranteeAgreed', 'fraudPolicyAgreed', 'termsAgreed', 'infoIsTruthfulAgreed', 'finalTermsAgreed', 'digitalSignature', 'idCardNumber'
+    'email', 'bio', 'adminPaymentMethodsInfo', 'commercialName', 'offeredPaymentMethods', 'commitmentAgreed', 'guaranteeAgreed', 'fraudPolicyAgreed', 'termsAgreed', 'infoIsTruthfulAgreed', 'finalTermsAgreed', 'digitalSignature', 'idCardNumber'
   ];
 
   optionalFields.forEach(field => {
