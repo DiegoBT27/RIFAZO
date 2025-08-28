@@ -5,11 +5,11 @@
 import type { ReactNode } from 'react';
 import React, { useCallback } from 'react';
 import { createContext, useContext, useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import type { ManagedUser } from '@/types';
 import { initialPlatformUsers } from '@/lib/mock-data';
 import { getUsers, getUserByUsername, addUser, updateUser, addActivityLog, toggleRaffleFavorite } from '@/lib/firebase/firestoreService';
-import { PLAN_CONFIG } from '@/lib/config/plans'; 
+import { PLAN_CONFIG, getPlanDetails } from '@/lib/config/plans'; 
 import { differenceInDays } from 'date-fns'; 
 import { db } from '@/lib/firebase/config';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -19,8 +19,9 @@ const LOCKOUT_MINUTES = 15;
 
 interface LoginResult {
   success: boolean;
-  reason?: 'blocked' | 'credentials_invalid' | 'account_locked' | 'user_not_found';
+  reason?: 'blocked' | 'credentials_invalid' | 'account_locked' | 'user_not_found' | 'password_not_set';
   lockoutMinutes?: number;
+  user?: ManagedUser; // Return user object if found but password not set
 }
 
 interface AuthContextType {
@@ -31,6 +32,7 @@ interface AuthContextType {
   logout: (options?: { sessionExpired?: boolean }) => Promise<void>;
   refreshUser: () => Promise<void>;
   toggleFavoriteRaffle: (raffleId: string) => Promise<void>;
+  completeRegistration: (password: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -262,64 +264,97 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (!dbUser) {
         return { success: false, reason: 'user_not_found' };
       }
+      
+      if (dbUser.password === null) {
+        // This is the first login. If they provided a password, we set it.
+        // If not, we prompt them to set it.
+        if (passwordInput && passwordInput.length >= 6) {
+            await updateUser(dbUser.id, { password: passwordInput });
+             // After setting password, proceed to log them in with the new password
+        } else {
+          return { success: false, reason: 'password_not_set', user: dbUser };
+        }
+      }
 
-      if (dbUser.lockoutUntil && new Date(dbUser.lockoutUntil) > new Date()) {
-        const lockedUntilDate = new Date(dbUser.lockoutUntil);
+      // Re-fetch user data to get the newly set password
+      const userWithPassword = await getUserByUsername(usernameInput);
+      if (!userWithPassword || userWithPassword.password !== passwordInput) {
+         // This block handles both incorrect password and the case where re-fetch fails
+         const newAttemptCount = (dbUser.failedLoginAttempts || 0) + 1;
+         if (newAttemptCount >= MAX_FAILED_ATTEMPTS) {
+            const lockoutUntilDate = new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000);
+            await updateUser(dbUser.id, {
+                failedLoginAttempts: 0,
+                lockoutUntil: lockoutUntilDate.toISOString()
+            });
+            return { success: false, reason: 'account_locked', lockoutMinutes: LOCKOUT_MINUTES };
+         } else {
+            await updateUser(dbUser.id, { failedLoginAttempts: newAttemptCount });
+            return { success: false, reason: 'credentials_invalid' };
+         }
+      }
+
+      // From here, password is correct
+      if (userWithPassword.lockoutUntil && new Date(userWithPassword.lockoutUntil) > new Date()) {
+        const lockedUntilDate = new Date(userWithPassword.lockoutUntil);
         const minutesRemaining = Math.ceil((lockedUntilDate.getTime() - new Date().getTime()) / 60000);
         return { success: false, reason: 'account_locked', lockoutMinutes: minutesRemaining };
       }
 
-      if (dbUser.password === passwordInput) {
-        if (dbUser.isBlocked) {
-          return { success: false, reason: 'blocked' };
-        }
-
-        if (dbUser.failedLoginAttempts > 0 || dbUser.lockoutUntil) {
-          await updateUser(dbUser.id, { failedLoginAttempts: 0, lockoutUntil: null });
-        }
-
-        const newSessionId = crypto.randomUUID();
-        await updateUser(dbUser.id, { sessionId: newSessionId });
-        
-        let finalUser = await checkAndManagePlanStatus({ ...dbUser, sessionId: newSessionId });
-
-        localStorage.setItem('currentUser', JSON.stringify(finalUser));
-        setUser(finalUser);
-        setIsLoggedIn(true);
-
-        await addActivityLog({
-          adminUsername: finalUser.username,
-          actionType: 'ADMIN_LOGIN',
-          targetInfo: `Usuario: ${finalUser.username}`,
-          details: { ipAddress: 'N/A', userAgent: 'N/A' }
-        });
-
-        if (finalUser.role === 'admin' || finalUser.role === 'founder') {
-          router.push('/admin');
-        } else {
-          router.push('/');
-        }
-        return { success: true };
-      } else {
-        const newAttemptCount = (dbUser.failedLoginAttempts || 0) + 1;
-
-        if (newAttemptCount >= MAX_FAILED_ATTEMPTS) {
-          const lockoutUntilDate = new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000);
-          await updateUser(dbUser.id, {
-            failedLoginAttempts: 0,
-            lockoutUntil: lockoutUntilDate.toISOString()
-          });
-          return { success: false, reason: 'account_locked', lockoutMinutes: LOCKOUT_MINUTES };
-        } else {
-          await updateUser(dbUser.id, { failedLoginAttempts: newAttemptCount });
-          return { success: false, reason: 'credentials_invalid' };
-        }
+      if (userWithPassword.isBlocked) {
+        return { success: false, reason: 'blocked' };
       }
-    } catch (error) {
+
+      // Successful login, clear any previous failed attempts
+      if (userWithPassword.failedLoginAttempts > 0 || userWithPassword.lockoutUntil) {
+        await updateUser(userWithPassword.id, { failedLoginAttempts: 0, lockoutUntil: null });
+      }
+
+      const newSessionId = crypto.randomUUID();
+      await updateUser(userWithPassword.id, { sessionId: newSessionId });
       
+      let finalUser = await checkAndManagePlanStatus({ ...userWithPassword, sessionId: newSessionId });
+
+      localStorage.setItem('currentUser', JSON.stringify(finalUser));
+      setUser(finalUser);
+      setIsLoggedIn(true);
+
+      await addActivityLog({
+        adminUsername: finalUser.username,
+        actionType: 'ADMIN_LOGIN',
+        targetInfo: `Usuario: ${finalUser.username}`,
+        details: { ipAddress: 'N/A', userAgent: 'N/A' }
+      });
+
+      if (finalUser.role === 'admin' || finalUser.role === 'founder') {
+        router.push('/admin');
+      } else {
+        router.push('/');
+      }
+      return { success: true };
+
+    } catch (error) {
       return { success: false, reason: 'credentials_invalid' };
     }
   };
+
+  const completeRegistration = async (password: string): Promise<boolean> => {
+    if (!user || !user.id || user.password) {
+      // Cannot complete if not logged in, no user, or password already exists
+      return false;
+    }
+    try {
+      await updateUser(user.id, { password: password });
+      // The user object in context needs to be updated with the password
+      const updatedUser = { ...user, password };
+      setUser(updatedUser);
+      localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+      return true;
+    } catch (error) {
+      return false;
+    }
+  };
+
 
   useEffect(() => {
     if (!user || !user.id || !isLoggedIn) {
@@ -373,7 +408,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn, isLoading, login, logout, refreshUser, toggleFavoriteRaffle }}>
+    <AuthContext.Provider value={{ user, isLoggedIn, isLoading, login, logout, refreshUser, toggleFavoriteRaffle, completeRegistration }}>
       {children}
     </AuthContext.Provider>
   );
@@ -386,3 +421,5 @@ export const useAuth = (): AuthContextType => {
   }
   return context;
 };
+
+    

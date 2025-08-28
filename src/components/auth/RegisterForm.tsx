@@ -130,7 +130,7 @@ export default function RegisterForm() {
               </Alert>
             )}
             <div>
-              <Label htmlFor="username-register">Nombre de Usuario</Label>
+              <Label htmlFor="username-register">Nombre de Usuario (tu cédula)</Label>
               <Input id="username-register" {...register("username")} placeholder="Elige un nombre de usuario" disabled={isLoading} />
               {errors.username && <p className="text-sm text-destructive mt-1">{errors.username.message}</p>}
             </div>

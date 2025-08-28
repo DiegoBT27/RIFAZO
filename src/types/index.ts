@@ -60,10 +60,9 @@ export interface Participation {
   numbers: number[];
   paymentStatus: 'pending' | 'confirmed' | 'rejected';
   purchaseDate: string; // ISO Date string
-  participantName?: string;
-  participantLastName?: string;
-  participantIdCard?: string;
-  participantPhone?: string;
+  participantName: string;
+  participantIdCard: string;
+  participantPhone: string;
   paymentNotes?: string;
   userHasRatedOrganizerForRaffle?: boolean; 
 }

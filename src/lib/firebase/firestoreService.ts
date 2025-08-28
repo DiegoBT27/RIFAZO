@@ -124,9 +124,9 @@ export const addUser = async (userData: Omit<ManagedUser, 'id'>): Promise<Manage
 
 
   const dataToSave: { [key: string]: any } = {
-    username: userData.username,
-    password: userData.password,
-    role: userData.role || 'user',
+    username: userData.username!,
+    password: userData.password || null, // Set to null if undefined or empty
+    role: userData.role!,
     isBlocked: userData.isBlocked || false,
     sessionId: null,
     averageRating: 0,
@@ -158,7 +158,7 @@ export const addUser = async (userData: Omit<ManagedUser, 'id'>): Promise<Manage
   const optionalFields: (keyof Omit<ManagedUser, 'id' | 'username' | 'password' | 'role' | 'isBlocked' | 'averageRating' | 'ratingCount' | 'plan' | 'planActive' | 'planStartDate' | 'planEndDate' | 'planAssignedBy' | 'rafflesCreatedThisPeriod' | 'sessionId' | 'failedLoginAttempts' | 'lockoutUntil' | 'favoriteRaffleIds'>)[] = [
     'organizerType', 'fullName', 'companyName', 'rif', 'publicAlias',
     'whatsappNumber', 'locationState', 'locationCity',
-    'email', 'bio', 'adminPaymentMethodsInfo', 'commercialName', 'offeredPaymentMethods', 'commitmentAgreed', 'guaranteeAgreed', 'fraudPolicyAgreed', 'termsAgreed', 'infoIsTruthfulAgreed', 'finalTermsAgreed', 'digitalSignature', 'idCardNumber'
+    'email', 'bio', 'adminPaymentMethodsInfo', 'commercialName', 'offeredPaymentMethods', 'commitmentAgreed', 'guaranteeAgreed', 'fraudPolicyAgreed', 'termsAgreed', 'infoIsTruthfulAgreed', 'idCardNumber'
   ];
 
   optionalFields.forEach(field => {
@@ -859,7 +859,7 @@ export const getParticipationsByUsername = async (username: string): Promise<Par
 };
 
 
-export const addParticipation = async (participationData: Omit<Participation, 'id'>): Promise<Participation> => {
+export const addParticipation = async (participationData: Omit<Participation, 'id' | 'participantLastName'>): Promise<Omit<Participation, 'id'>> => {
   const raffleDocRef = doc(db, 'raffles', participationData.raffleId);
 
   return await runTransaction(db, async (transaction) => {
@@ -1281,3 +1281,7 @@ export const clearAllTestDataFromFirestore = async (): Promise<{ summary: string
 
   return { summary, errors };
 };
+
+
+
+    

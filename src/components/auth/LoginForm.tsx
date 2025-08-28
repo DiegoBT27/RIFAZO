@@ -24,10 +24,13 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '../ui/separator';
+import SetInitialPasswordDialog from './SetInitialPasswordDialog';
+import type { ManagedUser } from '@/types';
+
 
 const loginSchema = z.object({
   username: z.string().min(1, { message: "El nombre de usuario es requerido." }),
-  password: z.string().min(1, { message: "La contraseña es requerida." }),
+  password: z.string().optional(),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
@@ -41,11 +44,25 @@ export default function LoginForm() {
   const [isTermsOpen, setIsTermsOpen] = useState(false);
   const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  
+  const [userForPasswordSetup, setUserForPasswordSetup] = useState<ManagedUser | null>(null);
+  const [isSetPasswordDialogOpen, setIsSetPasswordDialogOpen] = useState(false);
 
   const [dialogContent, setDialogContent] = useState<{ title: string; description: React.ReactNode } | null>(null);
 
-  const handleFailedLoginAttempt = (reason?: 'blocked' | 'credentials_invalid' | 'account_locked' | 'user_not_found', lockoutMinutes?: number) => {
+  const handleFailedLoginAttempt = (reason?: 'blocked' | 'credentials_invalid' | 'account_locked' | 'user_not_found' | 'password_not_set', lockoutMinutes?: number, userToSetup?: ManagedUser) => {
     switch (reason) {
+      case 'password_not_set':
+        if (userToSetup) {
+            setUserForPasswordSetup(userToSetup);
+            setIsSetPasswordDialogOpen(true);
+        } else {
+             setDialogContent({
+                title: 'Error de Cuenta',
+                description: 'Hubo un problema al identificar tu cuenta para configurar la contraseña. Por favor, contacta a soporte.',
+            });
+        }
+        break;
       case 'blocked':
         setDialogContent({
           title: 'Cuenta Bloqueada',
@@ -100,10 +117,10 @@ export default function LoginForm() {
     setDialogContent(null);
 
     try {
-      const loginResult = await login(data.username, data.password);
+      const loginResult = await login(data.username, data.password || '');
       
       if (!loginResult.success) {
-        handleFailedLoginAttempt(loginResult.reason, loginResult.lockoutMinutes);
+        handleFailedLoginAttempt(loginResult.reason, loginResult.lockoutMinutes, loginResult.user);
       }
     } catch (error) {
       console.error("[LoginForm] Error during onSubmit execution:", error);
@@ -153,7 +170,6 @@ export default function LoginForm() {
                     <span className="sr-only">{showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}</span>
                   </Button>
               </div>
-              {errors.password && <p className="text-xs text-destructive mt-1">{errors.password.message}</p>}
               <div className="text-right mt-2">
                  <Button 
                     type="button" 
@@ -208,6 +224,15 @@ export default function LoginForm() {
             </div>
         </CardFooter>
       </Card>
+      
+      {userForPasswordSetup && (
+        <SetInitialPasswordDialog
+            isOpen={isSetPasswordDialogOpen}
+            onOpenChange={setIsSetPasswordDialogOpen}
+            user={userForPasswordSetup}
+        />
+      )}
+
 
       <Dialog open={!!dialogContent} onOpenChange={(open) => { if (!open) setDialogContent(null); }}>
         <DialogContent className="sm:max-w-md">
@@ -364,3 +389,5 @@ export default function LoginForm() {
     </>
   );
 }
+
+    

@@ -212,7 +212,7 @@ ${personalIdentifier}
     }
 
     try {
-      const newUser: Omit<ManagedUser, 'id' | 'digitalSignature' | 'finalTermsAgreed'> = {
+      const newUser: Omit<ManagedUser, 'id'> = {
         username: data.username,
         password: data.password,
         role: 'pending_approval',

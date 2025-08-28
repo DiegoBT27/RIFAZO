@@ -156,7 +156,7 @@ export default function MyParticipationsPage() {
     const message = `¡Hola ${organizerName}! Estoy contactándote sobre mi participación registrada:
 
 Rifa: ${participation.raffleName}
-A nombre de: ${participation.participantName} ${participation.participantLastName}
+A nombre de: ${participation.participantName}
 Números: ${participation.numbers.join(', ')}
 Registrado el: ${new Date(participation.purchaseDate).toLocaleDateString('es-VE')}
 
@@ -299,7 +299,7 @@ ID de Participación: ${participation.id}`;
                   <p className="flex items-center"><Ticket className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> Números: <span className="font-semibold ml-1">{participation.numbers.map(n => String(n)).join(', ')}</span></p>
                   <p className="flex items-center"><CalendarDays className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> Fecha: <span className="font-semibold ml-1">{new Date(participation.purchaseDate).toLocaleDateString('es-VE')}</span></p>
                   {participation.participantName && (
-                    <p className="flex items-center"><UserCircleIcon className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> A nombre de: <span className="font-semibold ml-1">{participation.participantName} {participation.participantLastName}</span></p>
+                    <p className="flex items-center"><UserCircleIcon className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> A nombre de: <span className="font-semibold ml-1">{participation.participantName}</span></p>
                   )}
                   {creatorProfile && (
                     <p className="flex items-center"><ShoppingBag className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> De: <span className="font-semibold ml-1">{creatorProfile.publicAlias || creatorProfile.username}</span></p>
@@ -512,4 +512,3 @@ ID de Participación: ${participation.id}`;
     </div>
   );
 }
-

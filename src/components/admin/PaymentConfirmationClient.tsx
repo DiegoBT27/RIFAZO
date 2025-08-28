@@ -109,7 +109,7 @@ export default function AdminPaymentManager() {
           participationId: participation.id,
           raffleId: participation.raffleId,
           raffleName: participation.raffleName,
-          participantName: `${participation.participantName} ${participation.participantLastName}`,
+          participantName: participation.participantName,
           numbers: participation.numbers.join(', '),
           oldStatus,
           newStatus,
@@ -149,7 +149,7 @@ export default function AdminPaymentManager() {
                 participationId: participationToDelete.id,
                 raffleId: participationToDelete.raffleId,
                 raffleName: participationToDelete.raffleName,
-                participantName: `${participationToDelete.participantName} ${participationToDelete.participantLastName}`,
+                participantName: participationToDelete.participantName,
                 numbers: participationToDelete.numbers.join(', '),
                 statusWhenDeleted: participationToDelete.paymentStatus,
             }
@@ -205,7 +205,7 @@ export default function AdminPaymentManager() {
             <strong className="font-semibold text-foreground">{raffle?.name || 'Rifa Desconocida'}</strong> por <Badge variant="outline" className="text-xs">{creatorUsername || 'N/A'}</Badge>
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-2 gap-y-1">
-              <p className="flex items-center"><UserIcon className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> {p.participantName} {p.participantLastName}</p>
+              <p className="flex items-center"><UserIcon className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> {p.participantName}</p>
               <p className="flex items-center"><HashIcon className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> CI: {p.participantIdCard}</p>
               <p className="flex items-center"><PhoneIcon className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> {p.participantPhone}</p>
               <p className="flex items-center"><Ticket className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> Boletos: {p.numbers.join(', ')}</p>
@@ -246,7 +246,7 @@ export default function AdminPaymentManager() {
               <AlertDialogHeader>
                 <AlertDialogTitle className="flex items-center"><AlertTriangle className="text-destructive mr-2"/>¿Eliminar este registro?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Esta acción eliminará permanentemente el registro de participación de {p.participantName} {p.participantLastName} para la rifa "{allRafflesMap[p.raffleId]?.name || 'Desconocida'}". Esta acción no se puede deshacer.
+                  Esta acción eliminará permanentemente el registro de participación de {p.participantName} para la rifa "{allRafflesMap[p.raffleId]?.name || 'Desconocida'}". Esta acción no se puede deshacer.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
