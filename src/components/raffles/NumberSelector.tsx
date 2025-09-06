@@ -1,12 +1,13 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { TriangleAlert } from 'lucide-react';
+import type { ComboOffer } from '@/types';
 
 interface NumberSelectorProps {
   totalNumbers: number;
@@ -16,6 +17,7 @@ interface NumberSelectorProps {
   onSelectionChange: (selected: number[]) => void;
   minTickets?: number | null;
   maxTickets?: number | null;
+  comboOffers?: ComboOffer[] | null;
 }
 
 export default function NumberSelector({
@@ -26,6 +28,7 @@ export default function NumberSelector({
   onSelectionChange,
   minTickets,
   maxTickets,
+  comboOffers,
 }: NumberSelectorProps) {
   const [selectedNumbers, setSelectedNumbers] = useState<number[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -47,8 +50,14 @@ export default function NumberSelector({
 
   const handleNumberClick = (number: number) => {
     if (soldNumbers.includes(number)) return;
+    
+    const isCurrentlySelected = selectedNumbers.includes(number);
 
-    const newSelection = selectedNumbers.includes(number)
+    if (!isCurrentlySelected && maxTickets && selectedNumbers.length >= maxTickets) {
+      return; 
+    }
+
+    const newSelection = isCurrentlySelected
       ? selectedNumbers.filter((n) => n !== number)
       : [...selectedNumbers, number];
     
@@ -59,6 +68,32 @@ export default function NumberSelector({
   const currencySymbol = currency === 'Bs' ? 'Bs' : '$';
 
   const numbersArray = Array.from({ length: totalNumbers }, (_, i) => i + 1);
+
+  const numberLength = String(totalNumbers).length;
+
+  const { totalPrice, appliedOfferText } = useMemo(() => {
+    const count = selectedNumbers.length;
+    if (count === 0) return { totalPrice: 0, appliedOfferText: null };
+
+    // Find the best applicable combo offer
+    const applicableCombos = (comboOffers || [])
+      .filter(offer => offer.quantity === count)
+      .sort((a, b) => a.price - b.price); // Get the cheapest combo for this quantity
+
+    if (applicableCombos.length > 0) {
+      return {
+        totalPrice: applicableCombos[0].price,
+        appliedOfferText: `¡Oferta aplicada! ${applicableCombos[0].quantity} por ${currencySymbol}${applicableCombos[0].price.toFixed(2)}`,
+      };
+    }
+
+    // Default to individual price if no combo matches
+    return {
+      totalPrice: count * pricePerTicket,
+      appliedOfferText: null,
+    };
+  }, [selectedNumbers, comboOffers, pricePerTicket, currencySymbol]);
+
 
   return (
     <div>
@@ -96,15 +131,18 @@ export default function NumberSelector({
               animate={{ scale: isSelected ? 1.05 : 1 }}
               transition={{ type: "spring", stiffness: 300, damping: 20 }}
             >
-              {String(number)}
+              {String(number).padStart(numberLength, '0')}
             </motion.button>
           );
         })}
       </div>
       {selectedNumbers.length > 0 && (
         <div className="mt-2 sm:mt-2.5 p-2 sm:p-2.5 bg-secondary rounded-md shadow">
-          <p className="font-medium text-[0.7rem] sm:text-xs">Números seleccionados: {selectedNumbers.map(n => String(n)).join(', ')}</p>
-          <p className="font-semibold text-xs sm:text-sm text-destructive">Total a pagar: {currencySymbol}{selectedNumbers.length * pricePerTicket}</p>
+          <p className="font-medium text-[0.7rem] sm:text-xs">Números seleccionados: {selectedNumbers.map(n => String(n).padStart(numberLength, '0')).join(', ')}</p>
+          {appliedOfferText && (
+            <p className="font-semibold text-xs text-green-600">{appliedOfferText}</p>
+          )}
+          <p className="font-semibold text-xs sm:text-sm text-destructive">Total a pagar: {currencySymbol}{totalPrice.toFixed(2)}</p>
         </div>
       )}
        <AnimatePresence>

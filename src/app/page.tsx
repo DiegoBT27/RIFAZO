@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { useAuth } from '@/contexts/AuthContext';
 import RaffleCard from '@/components/raffles/RaffleCard';
@@ -21,16 +21,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { getRaffles, deleteRaffleAndParticipations, getUsersByUsernames } from '@/lib/firebase/firestoreService';
+import { Skeleton } from '@/components/ui/skeleton';
 
-const CreateRaffleForm = dynamic(() => import('@/components/admin/CreateRaffleForm'), {
-  loading: () => <div className="flex justify-center items-center h-40"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>,
-  ssr: false
-});
+const CreateRaffleForm = dynamic(() => import('@/components/admin/CreateRaffleForm'));
+const UserProfileDialog = dynamic(() => import('@/components/shared/UserProfileDialog'));
 
-const UserProfileDialog = dynamic(() => import('@/components/shared/UserProfileDialog'), {
-  loading: () => <div className="p-4 text-center">Cargando perfil...</div>,
-  ssr: false
-});
 
 export default function HomePage() {
   const { isLoggedIn, isLoading: authIsLoading, user } = useAuth();
@@ -135,10 +130,14 @@ export default function HomePage() {
                 </DialogDescription>
               </DialogHeader>
               <ScrollArea className="max-h-[70vh] w-full p-0.5 sm:p-1">
-                <CreateRaffleForm onSuccess={(createdRaffle) => {
-                  setIsCreateRaffleDialogOpen(false);
-                  setRafflesRefreshKey(prev => prev + 1);
-                }} />
+                <React.Suspense fallback={<div className="flex justify-center items-center h-40"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>}>
+                    {isCreateRaffleDialogOpen && (
+                        <CreateRaffleForm onSuccess={(createdRaffle) => {
+                            setIsCreateRaffleDialogOpen(false);
+                            setRafflesRefreshKey(prev => prev + 1);
+                        }} />
+                    )}
+                </React.Suspense>
               </ScrollArea>
             </DialogContent>
           </Dialog>
@@ -191,11 +190,13 @@ export default function HomePage() {
         </div>
       )}
       
-      <UserProfileDialog
-        userProfile={selectedCreatorProfile}
-        isOpen={isProfileDialogOpen}
-        onOpenChange={setIsProfileDialogOpen}
-      />
+      {isProfileDialogOpen && (
+        <UserProfileDialog
+            userProfile={selectedCreatorProfile}
+            isOpen={isProfileDialogOpen}
+            onOpenChange={setIsProfileDialogOpen}
+        />
+      )}
     </div>
   );
 }

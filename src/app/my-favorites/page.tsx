@@ -13,25 +13,23 @@ import { Loader2, Star, Inbox, Ticket as TicketIcon } from 'lucide-react';
 import type { Raffle, ManagedUser } from '@/types';
 import { getRafflesByIds, getUsersByUsernames, deleteRaffleAndParticipations } from '@/lib/firebase/firestoreService';
 import { useToast } from '@/hooks/use-toast';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const RaffleCard = dynamic(() => import('@/components/raffles/RaffleCard'), {
   loading: () => (
-    <div className="flex flex-col h-full w-[21.25rem] shadow-lg rounded-lg p-4 space-y-4">
-      <div className="bg-muted rounded h-[250px] animate-pulse"></div>
+    <div className="flex flex-col h-full w-full sm:w-[21.25rem] shadow-lg rounded-lg p-4 space-y-4">
+      <Skeleton className="bg-muted rounded h-[250px] w-full" />
       <div className="space-y-2">
-        <div className="h-6 w-3/4 bg-muted rounded animate-pulse"></div>
-        <div className="h-4 w-full bg-muted rounded animate-pulse"></div>
-        <div className="h-4 w-1/2 bg-muted rounded animate-pulse"></div>
+        <Skeleton className="h-6 w-3/4 bg-muted rounded" />
+        <Skeleton className="h-4 w-full bg-muted rounded" />
+        <Skeleton className="h-4 w-1/2 bg-muted rounded" />
       </div>
     </div>
   ),
   ssr: false,
 });
 
-const UserProfileDialog = dynamic(() => import('@/components/shared/UserProfileDialog'), {
-  loading: () => <div className="p-4 text-center">Cargando perfil...</div>,
-  ssr: false
-});
+const UserProfileDialog = dynamic(() => import('@/components/shared/UserProfileDialog'));
 
 export default function MyFavoritesPage() {
   const { user, isLoggedIn, isLoading: authIsLoading } = useAuth();
@@ -166,11 +164,13 @@ export default function MyFavoritesPage() {
           </Button>
         </div>
       )}
-       <UserProfileDialog
-        userProfile={selectedCreatorProfile}
-        isOpen={isProfileDialogOpen}
-        onOpenChange={setIsProfileDialogOpen}
-      />
+      {isProfileDialogOpen && (
+          <UserProfileDialog
+            userProfile={selectedCreatorProfile}
+            isOpen={isProfileDialogOpen}
+            onOpenChange={setIsProfileDialogOpen}
+          />
+      )}
     </div>
   );
 }

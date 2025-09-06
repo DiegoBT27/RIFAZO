@@ -1,13 +1,13 @@
 
 'use client';
 
-import { useState, type FormEvent, type ChangeEvent } from 'react';
+import { useState, type FormEvent, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { AlertTriangle, Hash, Loader2, MessageSquare, Key } from 'lucide-react';
+import { AlertTriangle, Hash, Loader2, MessageSquare } from 'lucide-react';
 import { Phone as PhoneIcon } from 'lucide-react';
 import { User } from 'lucide-react';
 import type { Participation, Raffle, ManagedUser } from '@/types';
@@ -19,7 +19,6 @@ import { useAuth } from '@/contexts/AuthContext';
 interface PaymentUploadFormProps {
   raffle: Raffle;
   selectedNumbers: number[];
-  pricePerTicket: number;
   onPaymentSuccess: () => void;
 }
 
@@ -62,7 +61,7 @@ const downloadTicketTextFile = (participation: Participation, raffle: Raffle, to
 };
 
 
-export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTicket, onPaymentSuccess }: PaymentUploadFormProps) {
+export default function PaymentUploadForm({ raffle, selectedNumbers, onPaymentSuccess }: PaymentUploadFormProps) {
   const [participantName, setParticipantName] = useState('');
   const [participantIdCard, setParticipantIdCard] = useState('');
   const [participantPhone, setParticipantPhone] = useState('');
@@ -71,6 +70,37 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { user: currentUser, login } = useAuth();
+
+
+  useEffect(() => {
+    if (currentUser) {
+        setParticipantName(currentUser.fullName || currentUser.publicAlias || currentUser.username || '');
+        setParticipantIdCard(currentUser.idCardNumber || currentUser.username || '');
+        setParticipantPhone(currentUser.whatsappNumber || '');
+    }
+  }, [currentUser]);
+
+
+  const { totalPrice } = useMemo(() => {
+    const count = selectedNumbers.length;
+    if (count === 0) return { totalPrice: 0, appliedOfferText: null };
+
+    const applicableCombos = (raffle.comboOffers || [])
+      .filter(offer => offer.quantity === count)
+      .sort((a, b) => a.price - b.price);
+
+    if (applicableCombos.length > 0) {
+      return {
+        totalPrice: applicableCombos[0].price,
+        appliedOfferText: `¡Oferta aplicada! ${raffle.currency === 'Bs' ? 'Bs' : '$'}${applicableCombos[0].price.toFixed(2)}`,
+      };
+    }
+
+    return {
+      totalPrice: count * raffle.pricePerTicket,
+      appliedOfferText: null,
+    };
+  }, [selectedNumbers, raffle.comboOffers, raffle.pricePerTicket, raffle.currency]);
 
 
   if (!raffle || !raffle.id || !raffle.name) {
@@ -86,7 +116,6 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
   }
 
   const selectedNumbersCount = selectedNumbers.length;
-  const totalAmount = selectedNumbersCount * pricePerTicket;
   const currencySymbol = raffle.currency === 'Bs' ? 'Bs' : '$';
 
   const isMinTicketsMet = !raffle.minTicketsPerPurchase || selectedNumbersCount >= raffle.minTicketsPerPurchase;
@@ -116,10 +145,11 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
       if (!currentUser) {
         let existingUser = await getUserByField('idCardNumber', participantIdCard);
         
+        // **CRITICAL FIX**: Check if the existing user has a password. If not, they can proceed.
         if (existingUser && existingUser.password) {
           toast({
             title: "Usuario Existente",
-            description: `Ya existe una cuenta asociada a la cédula ${participantIdCard}. Por favor, inicia sesión para continuar.`,
+            description: `Ya existe una cuenta con la cédula ${participantIdCard}. Por favor, inicia sesión para continuar.`,
             variant: "destructive",
             duration: 7000,
           });
@@ -130,7 +160,7 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
         if (!existingUser) {
            const newUserPartial: Omit<ManagedUser, 'id'> = {
               username: participantIdCard,
-              // No password is set here
+              password: null, // Set password to null explicitly
               role: 'user',
               isBlocked: false,
               favoriteRaffleIds: [],
@@ -165,7 +195,7 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
       
       onPaymentSuccess();
       
-      downloadTicketTextFile({ ...newParticipationData, id: savedParticipation.id }, raffle, totalAmount);
+      downloadTicketTextFile({ ...newParticipationData, id: savedParticipation.id }, raffle, totalPrice);
       
       let toastDescription = `Se ha registrado tu participación. Se descargará un archivo con los detalles. A continuación, se abrirá WhatsApp para contactar al organizador: ${raffle.creatorUsername || 'RIFAZO'}.`;
 
@@ -190,7 +220,7 @@ export default function PaymentUploadForm({ raffle, selectedNumbers, pricePerTic
 *A nombre de:* ${participantName}
 *Cédula:* ${participantIdCard}
 *Número(s):* ${selectedNumbers.join(', ')}
-*Total a pagar:* ${currencySymbol}${totalAmount.toFixed(2)}
+*Total a pagar:* ${currencySymbol}${totalPrice.toFixed(2)}
 
 Por favor, envíame los datos para realizar el pago. ¡Gracias!
 `;
@@ -271,7 +301,7 @@ Por favor, envíame los datos para realizar el pago. ¡Gracias!
          Al hacer clic en 'Participar', se abrirá WhatsApp para que envíes tu comprobante de pago al organizador (${raffle.creatorUsername || 'RIFAZO General'}) y coordines la confirmación. Se descargará un archivo de texto con los detalles de tu participación.
       </p>
       {selectedNumbersCount > 0 && (
-         <p className="text-xs text-center text-muted-foreground -mt-0.5">Total a pagar (a coordinar con organizador): <span className="font-bold text-foreground">{currencySymbol}${totalAmount.toFixed(2)}</span></p>
+         <p className="text-xs text-center text-muted-foreground -mt-0.5">Total a pagar (a coordinar con organizador): <span className="font-bold text-foreground">{currencySymbol}{totalPrice.toFixed(2)}</span></p>
       )}
     </form>
   );

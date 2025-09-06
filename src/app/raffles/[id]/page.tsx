@@ -296,6 +296,22 @@ export default function RaffleDetailsPage() {
             </div>
           )}
           <Separator className="my-1 sm:my-1.5"/>
+
+          {raffle.comboOffers && raffle.comboOffers.length > 0 && (
+            <div className="w-full text-xs pt-1 pb-2">
+                <h4 className="text-xs sm:text-sm font-semibold mb-1.5 flex items-center text-foreground">
+                    <Gift className="mr-1.5 h-3.5 w-3.5 text-accent" /> Ofertas Especiales
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                    {raffle.comboOffers.map((offer, index) => (
+                        <Badge key={index} variant="outline" className="text-xs border-green-500 text-green-600">
+                            {offer.quantity} boletos por {currencySymbol}{offer.price}
+                        </Badge>
+                    ))}
+                </div>
+            </div>
+          )}
+          <Separator className="my-1 sm:my-1.5"/>
           
           {availableTickets > 0 ? ( 
             !authIsLoading && (
@@ -326,6 +342,7 @@ export default function RaffleDetailsPage() {
                     onSelectionChange={handleSelectionChange}
                     minTickets={raffle.minTicketsPerPurchase}
                     maxTickets={raffle.maxTicketsPerPurchase}
+                    comboOffers={raffle.comboOffers}
                   />
                 ) : null}
                 {selectedNumbers.length > 0 && raffle && raffle.id && raffle.name && (
@@ -338,7 +355,6 @@ export default function RaffleDetailsPage() {
                     <PaymentUploadForm
                        raffle={raffle}
                        selectedNumbers={selectedNumbers}
-                       pricePerTicket={raffle.pricePerTicket}
                        onPaymentSuccess={handlePaymentSuccess}
                     />
                   </motion.div>

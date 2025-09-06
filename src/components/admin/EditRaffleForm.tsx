@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useState, type ChangeEvent, useEffect, useCallback } from 'react';
@@ -27,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Raffle, AcceptedPaymentMethod, ManagedUser, Prize } from '@/types';
+import type { Raffle, AcceptedPaymentMethod, ManagedUser, Prize, ComboOffer } from '@/types';
 import { AVAILABLE_PAYMENT_METHODS } from '@/lib/payment-methods';
 import { DRAW_TIMES } from '@/lib/lottery-data';
 import { getPlanDetails, type PlanDetails as AppPlanDetails } from '@/lib/config/plans';
@@ -60,6 +59,11 @@ const prizeSchema = z.object({
   drawTime: z.string().optional().nullable(),
 });
 
+const comboOfferSchema = z.object({
+  quantity: z.coerce.number().int().min(2, "La cantidad debe ser al menos 2."),
+  price: z.coerce.number().positive("El precio debe ser positivo."),
+});
+
 const createEditRaffleFormSchema = (planMaxTickets: number | Infinity, planDisplayName: string, planAllowsMultiplePrizes: boolean) => z.object({
   id: z.string(),
   name: z.string().min(5, { message: "El nombre debe tener al menos 5 caracteres." }),
@@ -68,6 +72,7 @@ const createEditRaffleFormSchema = (planMaxTickets: number | Infinity, planDispl
   prizes: z.array(prizeSchema).min(1, { message: "Debes definir al menos un premio." }).max(planAllowsMultiplePrizes ? 3 : 1, { message: `Tu plan solo permite ${planAllowsMultiplePrizes ? '3' : '1'} premio(s).` }),
   pricePerTicket: z.coerce.number().positive({ message: "El precio debe ser un número positivo." }),
   currency: z.enum(['USD', 'Bs'], { required_error: "Debe seleccionar una moneda." }),
+  comboOffers: z.array(comboOfferSchema).optional(),
   totalNumbers: z.coerce.number().int().min(10, { message: "Debe haber al menos 10 números." }),
   minTicketsPerPurchase: z.coerce.number().int().min(1, "El mínimo debe ser al menos 1.").optional().nullable(),
   maxTicketsPerPurchase: z.coerce.number().int().min(1, "El máximo debe ser al menos 1.").optional().nullable(),
@@ -217,6 +222,11 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
     control,
     name: "prizes"
   });
+
+  const { fields: comboFields, append: appendCombo, remove: removeCombo } = useFieldArray({
+    control,
+    name: "comboOffers",
+  });
   
   const parsePublicationDateTime = (publicationDate: string | null | undefined) => {
     if (!publicationDate) return { date: undefined, time: undefined };
@@ -238,6 +248,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
         prizes: (raffle.prizes && raffle.prizes.length > 0) ? raffle.prizes : [{ description: '', lotteryName: null, drawTime: 'unspecified_time' }],
         pricePerTicket: raffle.pricePerTicket,
         currency: raffle.currency || 'USD',
+        comboOffers: raffle.comboOffers || [],
         totalNumbers: raffle.totalNumbers,
         minTicketsPerPurchase: raffle.minTicketsPerPurchase || null,
         maxTicketsPerPurchase: raffle.maxTicketsPerPurchase || null,
@@ -343,6 +354,7 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
       prizes: data.prizes,
       pricePerTicket: data.pricePerTicket,
       currency: data.currency,
+      comboOffers: data.comboOffers,
       totalNumbers: data.totalNumbers,
       minTicketsPerPurchase: data.minTicketsPerPurchase || null,
       maxTicketsPerPurchase: data.maxTicketsPerPurchase || null,
@@ -353,37 +365,19 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
       acceptedPaymentMethods: acceptedPaymentMethodsResult,
     };
     
-    // --- Start: Refined Change Detection Logic ---
     const actualUpdatedFields: string[] = [];
     (Object.keys(raffleDataForDb) as Array<keyof typeof raffleDataForDb>).forEach(key => {
-      const newValue = raffleDataForDb[key];
-      const oldValue = initialFormState[key as keyof EditRaffleFormValues];
+        const newValue = raffleDataForDb[key];
+        const oldValue = initialFormState[key as keyof EditRaffleFormValues];
 
-      if (key === 'drawDate') {
-        if (format(data.drawDate, 'yyyy-MM-dd') !== format(initialFormState.drawDate, 'yyyy-MM-dd')) {
-          actualUpdatedFields.push(key);
+        if (key === 'drawDate') {
+            if (format(data.drawDate, 'yyyy-MM-dd') !== format(initialFormState.drawDate, 'yyyy-MM-dd')) {
+                actualUpdatedFields.push(key);
+            }
+        } else if (JSON.stringify(newValue) !== JSON.stringify(oldValue)) {
+            actualUpdatedFields.push(key);
         }
-      } else if (key === 'publicationDate') {
-        const newPubDate = data.isScheduled && data.publicationDate && data.publicationTime ? publicationDateISO : null;
-        const oldPubDate = initialFormState.isScheduled && initialFormState.publicationDate ? new Date(initialFormState.publicationDate).toISOString() : null;
-        if (newPubDate !== oldPubDate) {
-          actualUpdatedFields.push(key);
-        }
-      } else if (key === 'prizes' || key === 'acceptedPaymentMethods') {
-        if (JSON.stringify(newValue) !== JSON.stringify(oldValue)) {
-          actualUpdatedFields.push(key);
-        }
-      } else if (String(newValue) !== String(oldValue)) {
-        if (oldValue !== undefined || newValue !== undefined) {
-          actualUpdatedFields.push(key);
-        }
-      }
     });
-
-    if (finalImage !== initialFormState.image) {
-      if (!actualUpdatedFields.includes('image')) actualUpdatedFields.push('image');
-    }
-    // --- End: Refined Change Detection Logic ---
 
     try {
       if (actualUpdatedFields.length > 0) {
@@ -636,35 +630,89 @@ export default function EditRaffleForm({ raffle, onSuccess }: EditRaffleFormProp
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-          <div>
-            <Label htmlFor={`${formPrefix}pricePerTicket`} className="text-xs sm:text-sm">Precio por Boleto</Label>
-            <div className="flex items-center gap-2">
-                <Controller
-                    name="currency"
-                    control={control}
-                    render={({ field }) => (
-                        <Select onValueChange={field.onChange} value={field.value}>
-                            <SelectTrigger id={`${formPrefix}currency`} className="w-[80px] h-9 text-xs">
-                                <SelectValue placeholder="Moneda" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="USD">$ USD</SelectItem>
-                                <SelectItem value="Bs">Bs</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    )}
-                />
-                <Input id={`${formPrefix}pricePerTicket`} type="number" step="0.01" {...register("pricePerTicket")} placeholder="Ej: 5.00" className="h-9 text-xs sm:text-sm flex-1"/>
+        <Separator />
+
+        <div>
+          <Label className="text-xs sm:text-sm">Precios y Ofertas</Label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mt-2">
+            <div className="flex-grow">
+              <Label htmlFor={`${formPrefix}pricePerTicket`} className="text-xs text-muted-foreground">Precio por Boleto Individual</Label>
+              <div className="flex items-center gap-2">
+                  <Controller
+                      name="currency"
+                      control={control}
+                      render={({ field }) => (
+                          <Select onValueChange={field.onChange} value={field.value}>
+                              <SelectTrigger id={`${formPrefix}currency`} className="w-[80px] h-9 text-xs">
+                                  <SelectValue placeholder="Moneda" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                  <SelectItem value="USD">$ USD</SelectItem>
+                                  <SelectItem value="Bs">Bs</SelectItem>
+                              </SelectContent>
+                          </Select>
+                      )}
+                  />
+                  <Input id={`${formPrefix}pricePerTicket`} type="number" step="0.01" {...register("pricePerTicket")} placeholder="Ej: 5.00" className="h-9 text-xs sm:text-sm flex-1"/>
+              </div>
+              {errors.pricePerTicket && <p className="text-xs text-destructive mt-1">{errors.pricePerTicket.message}</p>}
+              {errors.currency && <p className="text-xs text-destructive mt-1">{errors.currency.message}</p>}
             </div>
-            {errors.pricePerTicket && <p className="text-xs text-destructive mt-1">{errors.pricePerTicket.message}</p>}
-            {errors.currency && <p className="text-xs text-destructive mt-1">{errors.currency.message}</p>}
+            <div>
+              <Label htmlFor={`${formPrefix}totalNumbers`} className="text-xs text-muted-foreground">Cantidad Total de Números</Label>
+              <Input id={`${formPrefix}totalNumbers`} type="number" {...register("totalNumbers")} placeholder="Ej: 100" className="h-9 text-xs sm:text-sm"/>
+              {errors.totalNumbers && <p className="text-xs text-destructive mt-1">{errors.totalNumbers.message}</p>}
+            </div>
           </div>
-          <div>
-            <Label htmlFor={`${formPrefix}totalNumbers`} className="text-xs sm:text-sm">Cantidad Total de Números</Label>
-            <Input id={`${formPrefix}totalNumbers`} type="number" {...register("totalNumbers")} placeholder="Ej: 100" className="h-9 text-xs sm:text-sm"/>
-            {errors.totalNumbers && <p className="text-xs text-destructive mt-1">{errors.totalNumbers.message}</p>}
+        </div>
+
+        <div className="p-3 border rounded-lg space-y-2 bg-muted/30">
+          <Label className="text-xs sm:text-sm font-semibold">Ofertas Especiales (Combos)</Label>
+          <div className="space-y-2">
+            {comboFields.map((field, index) => (
+              <div key={field.id} className="flex items-end gap-2">
+                <div className="flex-grow grid grid-cols-2 gap-2">
+                  <div>
+                    <Label htmlFor={`combo-quantity-${index}`} className="text-xs text-muted-foreground">Cantidad de Boletos</Label>
+                    <Input
+                      id={`combo-quantity-${index}`}
+                      type="number"
+                      {...register(`comboOffers.${index}.quantity`)}
+                      placeholder="Ej: 3"
+                      className="h-8 text-xs"
+                    />
+                     {errors.comboOffers?.[index]?.quantity && <p className="text-xs text-destructive mt-0.5">{errors.comboOffers?.[index]?.quantity?.message}</p>}
+                  </div>
+                  <div>
+                    <Label htmlFor={`combo-price-${index}`} className="text-xs text-muted-foreground">Precio del Combo ({selectedCurrency})</Label>
+                    <Input
+                      id={`combo-price-${index}`}
+                      type="number"
+                      step="0.01"
+                      {...register(`comboOffers.${index}.price`)}
+                      placeholder="Ej: 10.00"
+                      className="h-8 text-xs"
+                    />
+                    {errors.comboOffers?.[index]?.price && <p className="text-xs text-destructive mt-0.5">{errors.comboOffers?.[index]?.price?.message}</p>}
+                  </div>
+                </div>
+                <Button type="button" variant="ghost" size="icon" onClick={() => removeCombo(index)} className="h-8 w-8 flex-shrink-0">
+                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                </Button>
+              </div>
+            ))}
           </div>
+          {comboFields.length < 3 && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => appendCombo({ quantity: 0, price: 0 })}
+              className="mt-2 text-xs"
+            >
+              <PlusCircle className="mr-1.5 h-3.5 w-3.5" /> Añadir Oferta
+            </Button>
+          )}
         </div>
 
         <Separator />

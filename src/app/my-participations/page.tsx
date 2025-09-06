@@ -23,15 +23,8 @@ import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 
-const UserProfileDialog = dynamic(() => import('@/components/shared/UserProfileDialog'), {
-  loading: () => <div className="p-4 text-center">Cargando perfil...</div>,
-  ssr: false
-});
-
-const RateOrganizerDialog = dynamic(() => import('@/components/ratings/RateOrganizerDialog'), {
-  loading: () => <div className="p-4 text-center">Cargando formulario de calificación...</div>,
-  ssr: false
-});
+const UserProfileDialog = dynamic(() => import('@/components/shared/UserProfileDialog'));
+const RateOrganizerDialog = dynamic(() => import('@/components/ratings/RateOrganizerDialog'));
 
 const FALLBACK_ADMIN_WHATSAPP_NUMBER = "584141135956";
 
@@ -393,8 +386,6 @@ ID de Participación: ${participation.id}`;
                         </p>
                       )}
                       
-                      {participation.paymentNotes && <p><strong>Notas Adicionales del Comprador:</strong> {participation.paymentNotes}</p>}
-
                       {isRaffleCompleted && sourceOfTruth.winningNumbers?.length && (
                         <div className={cn(
                             "mt-3 p-3 rounded-md border space-y-0.5",
@@ -492,14 +483,14 @@ ID de Participación: ${participation.id}`;
             </Button>
           </div>
       )}
-      {selectedCreatorProfile && (
+      {isProfileDialogOpen && (
         <UserProfileDialog
           userProfile={selectedCreatorProfile}
           isOpen={isProfileDialogOpen}
           onOpenChange={setIsProfileDialogOpen}
         />
       )}
-      {ratingTarget && (
+      {isRatingDialogOpen && ratingTarget && (
         <RateOrganizerDialog
           raffleId={ratingTarget.raffleId}
           raffleName={ratingTarget.raffleName}

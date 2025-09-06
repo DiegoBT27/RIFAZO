@@ -8,6 +8,11 @@ export interface Prize {
   drawTime?: string | null;
 }
 
+export interface ComboOffer {
+  quantity: number;
+  price: number;
+}
+
 export interface AcceptedPaymentMethod {
   id: string; 
   name: string; 
@@ -24,6 +29,7 @@ export interface Raffle {
   publicationDate?: string | null; // ISO Date string for scheduled publication
   pricePerTicket: number;
   currency: 'USD' | 'Bs';
+  comboOffers?: ComboOffer[];
   totalNumbers: number;
   soldTicketsCount: number;
   confirmedPaymentsCount: number; // New field for data integrity
@@ -63,7 +69,6 @@ export interface Participation {
   participantName: string;
   participantIdCard: string;
   participantPhone: string;
-  paymentNotes?: string;
   userHasRatedOrganizerForRaffle?: boolean; 
 }
 
@@ -73,7 +78,7 @@ export interface ManagedUser {
   id: string;
   username: string;
   role: UserRole;
-  password?: string;
+  password?: string | null;
   isBlocked?: boolean; 
   sessionId?: string | null;
   failedLoginAttempts?: number;
