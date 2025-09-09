@@ -19,6 +19,11 @@ const roboto = Roboto({
 export const metadata: Metadata = {
   title: 'RIFAZO',
   description: 'Participa en la mejor APP de Rifas',
+  manifest: '/manifest.json',
+  icons: {
+    apple: "/icons/icon-192x192.png",
+    icon: "/icons/icon-192x192.png",
+  },
 };
 
 export default function RootLayout({
@@ -28,10 +33,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-      </head>
       <body className={cn('min-h-screen bg-background font-sans antialiased flex flex-col', roboto.variable)}>
         <ThemeProvider>
           <AuthProvider>

@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import Link from 'next/link';
@@ -27,6 +28,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext'; 
 import { cn } from '@/lib/utils';
+import InstallPwaButton from './InstallPwaButton';
 
 
 const ADMIN_WHATSAPP_NUMBER = "584141135956";
@@ -134,18 +136,19 @@ export default function Header() {
 
 
           {!isLoggedIn && pathname !== '/login' && pathname !== '/register' && (
-             <Button variant="outline" size="sm" asChild className="h-8 px-3 text-xs ml-1">
-              <Link href="/register">
-                <UserPlus className="mr-1.5 h-4 w-4"/> Registrarse
-              </Link>
-            </Button>
-          )}
-           {!isLoggedIn && pathname !== '/login' && pathname !== '/register' && (
-             <Button variant="default" size="sm" asChild className="h-8 px-3 text-xs ml-1">
-              <Link href="/login">
-                <LogIn className="mr-1.5 h-4 w-4"/> Iniciar Sesión
-              </Link>
-            </Button>
+            <>
+              <InstallPwaButton />
+              <Button variant="outline" size="sm" asChild className="h-8 px-3 text-xs ml-1">
+                <Link href="/register">
+                  <UserPlus className="mr-1.5 h-4 w-4"/> Registrarse
+                </Link>
+              </Button>
+              <Button variant="default" size="sm" asChild className="h-8 px-3 text-xs ml-1">
+                <Link href="/login">
+                  <LogIn className="mr-1.5 h-4 w-4"/> Iniciar Sesión
+                </Link>
+              </Button>
+            </>
           )}
 
           {isLoggedIn && user && (
@@ -232,6 +235,9 @@ export default function Header() {
                 ) : (
                    !authIsLoading &&
                   <div className="p-4 border-t space-y-2">
+                    <SheetClose asChild>
+                      <InstallPwaButton isMobile={true} />
+                    </SheetClose>
                     {pathname !== '/register' && (
                       <SheetClose asChild>
                         <Link href="/register" onClick={() => setIsMobileMenuOpen(false)}>

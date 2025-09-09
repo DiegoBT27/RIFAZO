@@ -137,7 +137,8 @@ export default function MyFavoritesPage() {
     <div className="flex flex-col min-h-[calc(100vh-350px)]">
       <SectionTitle>Mis Rifas Favoritas</SectionTitle>
       {favoriteRaffles.length > 0 ? (
-        <div className="flex flex-col items-center gap-4 sm:gap-6 md:grid md:grid-cols-2 lg:grid-cols-3">
+        <div className="flex justify-center">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {favoriteRaffles.map((raffle) => {
             const creatorProfile = raffle.creatorUsername ? creatorProfiles[raffle.creatorUsername] : undefined;
             return (
@@ -151,6 +152,7 @@ export default function MyFavoritesPage() {
               />
             );
           })}
+        </div>
         </div>
       ) : (
         <div className="text-center py-10 border-2 border-dashed border-muted-foreground/30 rounded-lg">
