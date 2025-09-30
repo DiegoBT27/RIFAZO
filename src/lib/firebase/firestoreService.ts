@@ -859,7 +859,7 @@ export const getParticipationsByUsername = async (username: string): Promise<Par
 };
 
 
-export const addParticipation = async (participationData: Omit<Participation, 'id' | 'participantLastName'>): Promise<Omit<Participation, 'id'>> => {
+export const addParticipation = async (participationData: Omit<Participation, 'id' | 'participantLastName'>): Promise<Omit<Participation, 'id' | 'participantLastName'>> => {
   const raffleDocRef = doc(db, 'raffles', participationData.raffleId);
 
   return await runTransaction(db, async (transaction) => {
@@ -871,6 +871,9 @@ export const addParticipation = async (participationData: Omit<Participation, 'i
     
     // 2. Check if the selected numbers are still available
     const participationsQuery = query(participationsCollection, where('raffleId', '==', participationData.raffleId));
+    // Firestore transactions require all reads to be before all writes.
+    // We cannot query within a transaction after a write has been staged.
+    // So we perform all reads first.
     const participationsSnapshot = await getDocs(participationsQuery);
     const existingNumbers = participationsSnapshot.docs
       .flatMap(doc => (doc.data() as Participation).numbers);
@@ -880,11 +883,17 @@ export const addParticipation = async (participationData: Omit<Participation, 'i
       throw new Error(`El número ${conflictNumber} ya no está disponible. Por favor, selecciona otro.`);
     }
 
-    // 3. If all numbers are available, create the new participation document
+    // 3. Increment the raffle's soldTicketsCount immediately
+    const ticketCount = participationData.numbers.length;
+    transaction.update(raffleDocRef, {
+      soldTicketsCount: increment(ticketCount),
+    });
+
+    // 4. Create the new participation document
     const newParticipationRef = doc(collection(db, 'participations'));
     transaction.set(newParticipationRef, participationData);
     
-    // 4. Return the new participation object with its ID
+    // 5. Return the new participation object with its ID
     return { id: newParticipationRef.id, ...participationData };
   });
 };
@@ -902,29 +911,45 @@ export const updateParticipation = async (participationId: string, participation
     const oldStatus = oldParticipationData.paymentStatus;
     const newStatus = participationData.paymentStatus;
     
+    // This is the only logic we need to update.
+    // The transaction only proceeds if the status is actually changing.
     if (oldStatus !== newStatus) {
       const raffleDocRef = doc(db, 'raffles', oldParticipationData.raffleId);
       const ticketCount = oldParticipationData.numbers.length;
       
-      let soldTicketsIncrement = 0;
-      let confirmedPaymentsIncrement = 0;
+      const updates: { [key: string]: any } = {};
 
-      if (oldStatus !== 'confirmed' && newStatus === 'confirmed') {
-        soldTicketsIncrement = ticketCount;
-        confirmedPaymentsIncrement = 1;
-      } else if (oldStatus === 'confirmed' && newStatus !== 'confirmed') {
-        soldTicketsIncrement = -ticketCount;
-        confirmedPaymentsIncrement = -1;
+      // From Pending to Confirmed
+      if (oldStatus === 'pending' && newStatus === 'confirmed') {
+        updates.confirmedPaymentsCount = increment(1);
+      }
+      // From Confirmed back to Pending (e.g., admin error)
+      else if (oldStatus === 'confirmed' && newStatus === 'pending') {
+        updates.confirmedPaymentsCount = increment(-1);
+      }
+      // From Confirmed to Rejected
+      else if (oldStatus === 'confirmed' && newStatus === 'rejected') {
+        updates.soldTicketsCount = increment(-ticketCount);
+        updates.confirmedPaymentsCount = increment(-1);
+      }
+      // From Pending to Rejected
+      else if (oldStatus === 'pending' && newStatus === 'rejected') {
+        updates.soldTicketsCount = increment(-ticketCount);
+      }
+      // From Rejected to something else (Ticket becomes sold again)
+      else if (oldStatus === 'rejected' && (newStatus === 'pending' || newStatus === 'confirmed')) {
+        updates.soldTicketsCount = increment(ticketCount);
+        if (newStatus === 'confirmed') {
+          updates.confirmedPaymentsCount = increment(1);
+        }
       }
 
-      if (soldTicketsIncrement !== 0 || confirmedPaymentsIncrement !== 0) {
-        transaction.update(raffleDocRef, { 
-          soldTicketsCount: increment(soldTicketsIncrement),
-          confirmedPaymentsCount: increment(confirmedPaymentsIncrement),
-        });
+      if (Object.keys(updates).length > 0) {
+        transaction.update(raffleDocRef, updates);
       }
     }
     
+    // Finally, update the participation document itself.
     transaction.update(participationDocRef, participationData);
   });
 };
@@ -937,17 +962,35 @@ export const deleteParticipation = async (participationId: string): Promise<void
     if (!participationDoc.exists()) {
         return;
     }
-    const participationData = participationDoc.data() as Participation;
+    const pData = participationDoc.data() as Participation;
+    const ticketCount = pData.numbers.length;
 
-    if (participationData.paymentStatus === 'confirmed') {
-      const raffleDocRef = doc(db, 'raffles', participationData.raffleId);
-      const ticketCount = participationData.numbers.length;
-      transaction.update(raffleDocRef, { 
-        soldTicketsCount: increment(-ticketCount),
-        confirmedPaymentsCount: increment(-1)
-      });
+    // We need to adjust the raffle counters.
+    const raffleDocRef = doc(db, 'raffles', pData.raffleId);
+    
+    // Prepare the update object
+    const updates: { [key: string]: any } = {};
+
+    // If the participation was confirmed or pending, it was counted as sold.
+    // So, we decrement the soldTicketsCount.
+    if (pData.paymentStatus === 'confirmed' || pData.paymentStatus === 'pending') {
+        updates.soldTicketsCount = increment(-ticketCount);
     }
     
+    // If the participation was confirmed, we also decrement the confirmedPaymentsCount.
+    if (pData.paymentStatus === 'confirmed') {
+        updates.confirmedPaymentsCount = increment(-1);
+    }
+    
+    if (Object.keys(updates).length > 0) {
+        // We need to make sure the raffle doc exists before updating.
+        const raffleDocSnap = await transaction.get(raffleDocRef);
+        if (raffleDocSnap.exists()) {
+            transaction.update(raffleDocRef, updates);
+        }
+    }
+    
+    // Finally, delete the participation document.
     transaction.delete(participationDocRef);
   });
 };

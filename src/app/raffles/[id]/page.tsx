@@ -12,12 +12,12 @@ import NumberSelector from '@/components/raffles/NumberSelector';
 import SectionTitle from '@/components/shared/SectionTitle';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CalendarDays, DollarSign, Gift, Ticket as TicketIcon, Info, Loader2, CreditCard, Smartphone, PackageCheck, UserCircle, LogIn, Clock, ListChecks, AlertTriangle, Share2, Shuffle } from 'lucide-react';
+import { CalendarDays, DollarSign, Gift, Ticket as TicketIcon, Info, Loader2, CreditCard, Smartphone, PackageCheck, UserCircle, LogIn, Clock, ListChecks, AlertTriangle, Share2, Shuffle, Ban } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { motion } from 'framer-motion';
 import { getRaffleById, getParticipationsByRaffleId, getUserByUsername as getCreatorProfileByUsername } from '@/lib/firebase/firestoreService';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 
 
@@ -39,6 +39,7 @@ export default function RaffleDetailsPage() {
   const [effectiveSoldNumbers, setEffectiveSoldNumbers] = useState<number[]>([]);
   const [selectedNumbers, setSelectedNumbers] = useState<number[]>([]);
   const [pageIsLoading, setPageIsLoading] = useState(true);
+  const [isCreatorPlanExpired, setIsCreatorPlanExpired] = useState(false);
 
   const fetchRaffleAndCreatorData = useCallback(async () => {
     if (!raffleId) {
@@ -64,6 +65,15 @@ export default function RaffleDetailsPage() {
         if (foundRaffle.creatorUsername) {
           const profile = await getCreatorProfileByUsername(foundRaffle.creatorUsername);
           setCreatorProfile(profile);
+          if (profile && (profile.role === 'admin' || profile.role === 'founder')) {
+              const planIsActive = profile.planActive || false;
+              const planEndDate = profile.planEndDate ? new Date(profile.planEndDate) : null;
+              if (!planIsActive || (planEndDate && planEndDate < new Date())) {
+                  setIsCreatorPlanExpired(true);
+              }
+          } else {
+            setCreatorProfile(null);
+          }
         } else {
           setCreatorProfile(null);
         }
@@ -199,7 +209,7 @@ export default function RaffleDetailsPage() {
     );
   }
 
-  const availableTickets = raffle.totalNumbers - (raffle.soldTicketsCount || 0);
+  const availableTickets = raffle.totalNumbers - effectiveSoldNumbers.length;
 
   const drawDateObj = new Date(raffle.drawDate + 'T00:00:00Z');
   const formattedDrawDate = drawDateObj.toLocaleDateString('es-VE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' });
@@ -209,6 +219,15 @@ export default function RaffleDetailsPage() {
   return (
     <div className="space-y-3 sm:space-y-4">
       <SectionTitle className="text-lg sm:text-xl">{raffle.name}</SectionTitle>
+      {isCreatorPlanExpired && (
+        <Alert variant="destructive" className="mb-4">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle className="font-bold">¡Atención!</AlertTitle>
+            <AlertDescription>
+                El plan del organizador de esta rifa ha expirado. Procede con precaución, ya que la gestión de pagos y la entrega de premios podría estar comprometida.
+            </AlertDescription>
+        </Alert>
+      )}
       <Card className="overflow-hidden shadow-lg sm:shadow-xl">
         <CardHeader className="p-0 relative">
           <Image
@@ -313,8 +332,16 @@ export default function RaffleDetailsPage() {
           )}
           <Separator className="my-1 sm:my-1.5"/>
           
-          {availableTickets > 0 ? ( 
-            !authIsLoading && (
+           {isCreatorPlanExpired ? (
+              <Alert variant="destructive" className="mt-3 sm:mt-4 text-center">
+                <Ban className="h-4 w-4" />
+                <AlertTitle>Participación Suspendida</AlertTitle>
+                <AlertDescription className="text-xs">
+                    La participación en esta rifa está suspendida porque el plan del organizador ha expirado.
+                </AlertDescription>
+              </Alert>
+            ) : availableTickets > 0 ? ( 
+              !authIsLoading && (
               <>
                 {raffle.allowRandomNumberSelection && !isLoggedIn ? (
                     <div className="text-center p-4">

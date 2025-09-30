@@ -116,8 +116,8 @@ const RaffleCard = React.memo(function RaffleCard({ raffle, currentUser, onDelet
           src={raffle.image}
           alt={raffle.name}
           width={640}
-          height={500}
-          className="rounded-t-lg object-cover w-full h-[300px] md:h-[250px]"
+          height={480}
+          className="rounded-t-lg object-cover w-full h-auto aspect-[4/3]"
           data-ai-hint="raffle prize product"
         />
       </CardHeader>

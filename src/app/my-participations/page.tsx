@@ -16,7 +16,7 @@ import {
   DialogFooter, DialogClose,
 } from '@/components/ui/dialog';
 import type { Participation, ManagedUser, Raffle, AcceptedPaymentMethod, Rating, Prize, RaffleResult } from '@/types';
-import { Ticket, CalendarDays, AlertCircle, CheckCircle, Clock, ShoppingBag, Eye, Info, Loader2, UserCircle as UserCircleIcon, MessageSquare, CreditCard, ListChecks, Trophy, Gift, Phone as PhoneIcon, Star as StarIcon, Trash2, Archive } from 'lucide-react';
+import { Ticket, CalendarDays, AlertCircle, CheckCircle, Clock, ShoppingBag, Eye, Info, Loader2, UserCircle as UserCircleIcon, MessageSquare, CreditCard, ListChecks, Trophy, Gift, Phone as PhoneIcon, Star as StarIcon, Trash2, Archive, ShieldAlert } from 'lucide-react';
 import { getParticipationsByUsername, getRafflesByIds, getUsersByUsernames, getRaffleResults } from '@/lib/firebase/firestoreService';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
@@ -235,6 +235,15 @@ ID de Participación: ${participation.id}`;
             const currentStatusVariantForDialog = statusVariantForDialog[paymentStatusKey] || statusVariantForDialog.unknown;
 
             const isRaffleCompleted = sourceOfTruth.status === 'completed' || isRaffleArchivedWithResult;
+
+            let isCreatorPlanExpired = false;
+            if (creatorProfile && (creatorProfile.role === 'admin' || creatorProfile.role === 'founder')) {
+                const planIsActive = creatorProfile.planActive || false;
+                const planEndDate = creatorProfile.planEndDate ? new Date(creatorProfile.planEndDate) : null;
+                if (!planIsActive || (planEndDate && planEndDate < new Date())) {
+                    isCreatorPlanExpired = true;
+                }
+            }
             
             let userWinningPrizes: { number: number; prize: Prize }[] = [];
             if (isRaffleCompleted && sourceOfTruth.winningNumbers?.length) {
@@ -264,6 +273,7 @@ ID de Participación: ${participation.id}`;
                 "shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col justify-between",
                 isWinner && "border-2 border-green-500 bg-green-500/10",
                 isRaffleCompleted && !isWinner && "border-red-500/30 bg-red-500/10",
+                isCreatorPlanExpired && "border-yellow-500 bg-yellow-500/10"
               )}>
                 <CardHeader className="pb-2 sm:pb-3 pt-3 sm:pt-4 px-3 sm:px-4">
                   <div className="flex justify-between items-start">
@@ -274,6 +284,11 @@ ID de Participación: ${participation.id}`;
                       {React.cloneElement(statusDisplay.icon, { className: "h-5 w-5"})}
                     </span>
                   </div>
+                   {isCreatorPlanExpired && (
+                     <Badge variant="destructive" className="mt-1.5 py-1 text-xs sm:text-sm w-fit bg-yellow-600 border-yellow-600 text-white hover:bg-yellow-700">
+                        <ShieldAlert className="mr-1.5 h-4 w-4" /> Plan del Organizador Vencido
+                     </Badge>
+                   )}
                    {isRaffleArchivedWithResult ? (
                        <Badge variant="secondary" className="mt-1.5 py-1 text-xs sm:text-sm w-fit">
                            <Archive className="mr-1.5 h-4 w-4" /> Finalizada y Archivada
